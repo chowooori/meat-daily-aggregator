@@ -1,0 +1,14 @@
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.streamlit/secrets.toml
+data/
+
+# 실제 발송 엑셀(개인정보)은 공개 저장소에 올리지 않음
+*EMP*.xls
+*EMP*.xlsx
+일일생산집계표*.xlsx
+scripts/_*.txt
+scripts/emp_verify.txt
+scripts/satae_check.txt
