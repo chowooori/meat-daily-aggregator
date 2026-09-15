@@ -37,7 +37,7 @@ def _apply(cell, *, font=None, fill=None):
         cell.font = font
     if fill:
         cell.fill = fill
-    cell.alignment = Alignment(horizontal="center", vertical="center")
+    cell.alignment = Alignment(horizontal="left", vertical="center", indent=1)
     cell.border = thin
 
 

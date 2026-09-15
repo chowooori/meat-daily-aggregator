@@ -53,14 +53,14 @@ def _fmt(value) -> str:
     return str(value)
 
 
-def _cell_text(draw: ImageDraw.ImageDraw, box: tuple[int, int, int, int], text: str, font, fill, *, align="center"):
+def _cell_text(draw: ImageDraw.ImageDraw, box: tuple[int, int, int, int], text: str, font, fill, *, align="left"):
     x0, y0, x1, y1 = box
     bbox = draw.textbbox((0, 0), text, font=font)
     tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
-    if align == "left":
-        x = x0 + 16
-    else:
+    if align == "center":
         x = x0 + (x1 - x0 - tw) / 2
+    else:
+        x = x0 + 16
     y = y0 + (y1 - y0 - th) / 2 - bbox[1]
     draw.text((x, y), text, font=font, fill=fill)
 
@@ -126,8 +126,7 @@ def render_share_png(
                 if i == 0:
                     text = str(row.get(key, ""))
                 font = cell_bold if key == "합계" else cell_font
-                align = "left" if i == 0 else "center"
-                _cell_text(draw, (xs[i], y, xs[i + 1], y + row_h), text, font, TEXT, align=align)
+                _cell_text(draw, (xs[i], y, xs[i + 1], y + row_h), text, font, TEXT, align="left")
             y += row_h
         draw.rectangle((xs[0], origin_y, xs[-1], y), outline=(180, 186, 192), width=1)
         return y

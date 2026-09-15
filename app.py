@@ -13,6 +13,28 @@ from aggregator.image_export import render_share_png
 from aggregator.storage import desktop_writable, save_daily_aggregate, save_kakao_png
 from aggregator.summary import production_rows
 
+
+def _display_cell(value) -> str:
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return ""
+    if isinstance(value, float):
+        if value.is_integer():
+            return str(int(value))
+        return f"{value:g}"
+    return str(value)
+
+
+def left_text_df(df: pd.DataFrame) -> pd.DataFrame:
+    formatted = df.copy()
+    for col in formatted.columns:
+        formatted[col] = formatted[col].map(_display_cell)
+    return formatted
+
+
+def text_column_config(df: pd.DataFrame) -> dict:
+    return {col: st.column_config.TextColumn(col) for col in df.columns}
+
+
 st.set_page_config(
     page_title="일일 생산 집계표",
     page_icon="🥩",
@@ -30,7 +52,19 @@ st.markdown(
     <style>
     .block-container {padding-top: 1.2rem; max-width: 1280px;}
     h1 {letter-spacing: -0.04em;}
-    div[data-testid="stMetricValue"] {font-size: 1.55rem;}
+    div[data-testid="stMetricValue"] {font-size: 1.55rem; text-align: left;}
+    div[data-testid="stMetricLabel"] {text-align: left;}
+    [data-testid="stDataFrame"] [role="columnheader"],
+    [data-testid="stDataFrame"] [role="gridcell"] {
+        justify-content: flex-start !important;
+        text-align: left !important;
+    }
+    [data-testid="stDataFrame"] [role="columnheader"] > div,
+    [data-testid="stDataFrame"] [role="gridcell"] > div {
+        justify-content: flex-start !important;
+        text-align: left !important;
+        width: 100%;
+    }
     .hero {
         background: linear-gradient(135deg, #1F4E79 0%, #2E86AB 100%);
         color: #fff;
@@ -162,30 +196,25 @@ for idx, round_no in enumerate(rounds):
     metrics[idx + 2].metric(col_name, f"{round_sum:g}개")
 
 display_cols = ["상품", "용량", *round_cols, "합계"]
-need_df = pd.DataFrame([{c: row[c] for c in display_cols} for row in combined])
-column_config = {
-    "상품": st.column_config.TextColumn("상품", width="medium"),
-    "용량": st.column_config.TextColumn("용량", width="small"),
-    "합계": st.column_config.NumberColumn("합계", format="%d"),
-}
-for col in round_cols:
-    column_config[col] = st.column_config.NumberColumn(col, format="%d")
+need_df = left_text_df(pd.DataFrame([{c: row[c] for c in display_cols} for row in combined]))
 
 st.dataframe(
     need_df,
     width="stretch",
     hide_index=True,
-    column_config=column_config,
+    column_config=text_column_config(need_df),
 )
 
 st.subheader("육회·육사시미 전용량 중량")
 st.caption("모든 용량을 kg으로 합친 값입니다.")
 group_rows = meat_group_subtotals(all_combined, rounds)
 group_cols = ["품목", "단위", *round_cols, "합계"]
+group_df = left_text_df(pd.DataFrame([{c: row[c] for c in group_cols} for row in group_rows]))
 st.dataframe(
-    pd.DataFrame([{c: row[c] for c in group_cols} for row in group_rows]),
+    group_df,
     width="stretch",
     hide_index=True,
+    column_config=text_column_config(group_df),
 )
 
 st.subheader("3. 저장 · 공유")
@@ -234,15 +263,25 @@ for tab, round_no in zip(tabs, rounds):
         if not rows:
             st.write("이 차수에 집계된 고기가 없습니다.")
         else:
+            detail_qty = left_text_df(
+                pd.DataFrame([{"상품": r["상품"], "용량": r["용량"], "총 개수": r["총 개수"]} for r in rows])
+            )
             st.dataframe(
-                pd.DataFrame([{"상품": r["상품"], "용량": r["용량"], "총 개수": r["총 개수"]} for r in rows]),
+                detail_qty,
                 width="stretch",
                 hide_index=True,
+                column_config=text_column_config(detail_qty),
             )
         detail_df = details.get(round_no)
         if detail_df is not None and not detail_df.empty:
             with st.expander("파싱 상세", expanded=False):
-                st.dataframe(detail_df, width="stretch", hide_index=True)
+                parsed_df = left_text_df(detail_df)
+                st.dataframe(
+                    parsed_df,
+                    width="stretch",
+                    hide_index=True,
+                    column_config=text_column_config(parsed_df),
+                )
         if totals.unmatched:
             st.warning("미인식 항목이 있습니다.")
             st.dataframe(pd.DataFrame({"원문": totals.unmatched}), width="stretch", hide_index=True)
@@ -253,11 +292,18 @@ with tabs[-1]:
     group_cols = ["품목", "단위", *round_cols, "합계"]
     st.subheader("육회·육사시미 전용량 중량")
     st.caption("모든 용량을 kg으로 합친 값입니다.")
+    full_group_df = left_text_df(pd.DataFrame([{c: row[c] for c in group_cols} for row in group_rows]))
     st.dataframe(
-        pd.DataFrame([{c: row[c] for c in group_cols} for row in group_rows]),
+        full_group_df,
         width="stretch",
         hide_index=True,
+        column_config=text_column_config(full_group_df),
     )
-    full_df = pd.DataFrame([{c: row[c] for c in display_cols} for row in all_combined])
+    full_df = left_text_df(pd.DataFrame([{c: row[c] for c in display_cols} for row in all_combined]))
     st.subheader("용량별 상세")
-    st.dataframe(full_df, width="stretch", hide_index=True)
+    st.dataframe(
+        full_df,
+        width="stretch",
+        hide_index=True,
+        column_config=text_column_config(full_df),
+    )
