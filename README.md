@@ -28,7 +28,9 @@ streamlit run app.py
 
 무료 Streamlit Community Cloud에 올리면 `https://....streamlit.app` 주소로 누구나 브라우저에서 쓸 수 있습니다.
 
-1. [share.streamlit.io](https://share.streamlit.io) 에 GitHub 계정으로 로그인
+1. [앱 배포하기](https://share.streamlit.io/deploy?repository=chowooori/meat-daily-aggregator&branch=main&mainModule=app.py) 에서 GitHub로 로그인
 2. **Create app** → 저장소 `chowooori/meat-daily-aggregator` , 파일 `app.py`
 3. Deploy 후 나온 주소를 팀원에게 공유
+
+`Error installing requirements` 가 나오면 리눅스 시스템 패키지 설치가 막힌 경우가 많습니다. 이 저장소는 폰트를 앱에 포함해서 `packages.txt` 없이 배포합니다. GitHub에 최신 코드가 반영된 뒤 Streamlit에서 **Reboot app** 또는 다시 Deploy 하면 됩니다.
 

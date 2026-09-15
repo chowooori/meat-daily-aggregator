@@ -20,7 +20,8 @@ MUTED = (90, 98, 104)
 
 
 def _font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
-    candidates = []
+    bundled = Path(__file__).resolve().parent.parent / "fonts" / "NanumGothic-Regular.ttf"
+    candidates = [bundled]
     if bold:
         candidates.extend(
             [
