@@ -10,7 +10,7 @@ from aggregator.batches import combine_batches, detect_round, meat_group_subtota
 from aggregator.excel_export import report_bytes
 from aggregator.excel_io import aggregate_orders, read_orders
 from aggregator.image_export import render_share_png
-from aggregator.storage import save_daily_aggregate, save_kakao_png
+from aggregator.storage import desktop_writable, save_daily_aggregate, save_kakao_png
 from aggregator.summary import production_rows
 
 st.set_page_config(
@@ -189,33 +189,41 @@ st.dataframe(
 )
 
 st.subheader("3. 저장 · 공유")
+st.caption("웹에서는 파일을 받아서 카카오톡으로 보내면 됩니다.")
 xlsx_data = report_bytes(None, report_date, batches)
 file_name = f"일일생산집계표_{report_date.strftime('%Y%m%d')}.xlsx"
+png_name = f"카카오공유_{report_date.strftime('%Y%m%d')}.png"
 png_data = render_share_png(
     [{c: row[c] for c in display_cols} for row in combined],
     [{c: row[c] for c in group_cols} for row in group_rows],
     rounds,
     report_date,
 )
-dl_col, save_col, img_col = st.columns(3)
+dl_col, img_col, save_col = st.columns(3)
 with dl_col:
     st.download_button(
-        label="차수별 총개수 엑셀 다운로드",
+        label="엑셀 다운로드",
         data=xlsx_data,
         file_name=file_name,
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         type="primary",
     )
-with save_col:
-    if st.button("오늘 집계 저장"):
-        folder = save_daily_aggregate(sources, xlsx_data, report_date)
-        st.success(f"바탕화면에 저장했습니다: {folder}")
-        st.caption("위치: 바탕화면\\일일생산집계\\생산일자  /  같은 날짜에 다시 저장하면 덮어씁니다.")
 with img_col:
-    if st.button("카카오 공유용 이미지 저장"):
-        png_path = save_kakao_png(png_data, report_date, rounds)
-        st.success(f"이미지를 저장했습니다: {png_path}")
-        st.image(png_data, caption="카카오톡에 이 사진을 보내면 됩니다.")
+    st.download_button(
+        label="카카오 공유용 이미지 다운로드",
+        data=png_data,
+        file_name=png_name,
+        mime="image/png",
+    )
+with save_col:
+    if desktop_writable():
+        if st.button("오늘 집계 저장 (이 PC 바탕화면)"):
+            folder = save_daily_aggregate(sources, xlsx_data, report_date)
+            save_kakao_png(png_data, report_date, rounds)
+            st.success(f"바탕화면에 저장했습니다: {folder}")
+    else:
+        st.caption("이 웹에서는 위 다운로드 버튼을 사용하세요.")
+st.image(png_data, caption="미리보기 — 이미지를 받아 카카오톡에 보내면 됩니다.")
 
 st.subheader("4. 차수 상세 · 전체 용량표")
 tabs = st.tabs([f"{round_label(r)} 상세" for r in rounds] + ["전체 용량표"])

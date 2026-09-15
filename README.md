@@ -22,4 +22,13 @@ streamlit run app.py
 - 육회·육사시미 전용량 중량(kg)
 - 엑셀 다운로드, 바탕화면 저장, 카카오 공유용 PNG
 
-저장 위치: `바탕화면\일일생산집계\날짜`
+저장 위치(이 PC에서 실행할 때): `바탕화면\일일생산집계\날짜`
+
+## 웹 주소로 바로 쓰기 (설치 없음)
+
+무료 Streamlit Community Cloud에 올리면 `https://....streamlit.app` 주소로 누구나 브라우저에서 쓸 수 있습니다.
+
+1. [share.streamlit.io](https://share.streamlit.io) 에 GitHub 계정으로 로그인
+2. **Create app** → 저장소 `chowooori/meat-daily-aggregator` , 파일 `app.py`
+3. Deploy 후 나온 주소를 팀원에게 공유
+

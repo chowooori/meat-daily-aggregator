@@ -20,13 +20,23 @@ MUTED = (90, 98, 104)
 
 
 def _font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
-    names = []
+    candidates = []
     if bold:
-        names.extend(["malgunbd.ttf", "malgunbd.ttc"])
-    names.extend(["malgun.ttf", "malgun.ttc", "NanumGothic.ttf", "NotoSansCJK-Regular.ttc"])
-    windows = Path(r"C:\Windows\Fonts")
-    for name in names:
-        path = windows / name
+        candidates.extend(
+            [
+                Path(r"C:\Windows\Fonts\malgunbd.ttf"),
+                Path("/usr/share/fonts/truetype/nanum/NanumGothicBold.ttf"),
+            ]
+        )
+    candidates.extend(
+        [
+            Path(r"C:\Windows\Fonts\malgun.ttf"),
+            Path("/usr/share/fonts/truetype/nanum/NanumGothic.ttf"),
+            Path("/usr/share/fonts/truetype/nanum/NanumGothicBold.ttf"),
+            Path("/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc"),
+        ]
+    )
+    for path in candidates:
         if path.exists():
             return ImageFont.truetype(str(path), size)
     return ImageFont.load_default()

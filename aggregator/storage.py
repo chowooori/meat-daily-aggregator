@@ -25,6 +25,11 @@ def desktop_dir() -> Path:
 DATA_DIR = desktop_dir() / "일일생산집계"
 
 
+def desktop_writable() -> bool:
+    desktop = desktop_dir()
+    return desktop.is_dir() and os.access(desktop, os.W_OK)
+
+
 def source_name_and_bytes(source) -> tuple[str, bytes]:
     name = Path(str(getattr(source, "name", source))).name
     if hasattr(source, "getvalue"):
