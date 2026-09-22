@@ -24,6 +24,10 @@ import {
   renderSharePng,
 } from "@/lib/aggregator/exportPng";
 import { productionRows } from "@/lib/aggregator/summary";
+import {
+  buildProductionRows,
+  saveProductionJob,
+} from "@/lib/supabase/saveProduction";
 import { DataTable } from "./DataTable";
 import { FileDropMulti } from "./FileDropMulti";
 import { ProductionTable, type QtyColumn } from "./ProductionTable";
@@ -62,6 +66,8 @@ export function AggregatorApp() {
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState(0);
   const [pngPreview, setPngPreview] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [saveNote, setSaveNote] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -101,6 +107,7 @@ export function AggregatorApp() {
       if (!cancelled) {
         setResult({ batches, details, errors });
         setActiveTab(0);
+        setSaveNote("");
         setLoading(false);
       }
     }
@@ -206,6 +213,46 @@ export function AggregatorApp() {
   const handlePngDownload = () => {
     if (!pngPreview) return;
     downloadBlob(dataUrlToBlob(pngPreview), pngFileName(reportDate));
+  };
+
+  const handleDbSave = async () => {
+    if (!result || !Object.keys(result.batches).length || saving) return;
+    setSaving(true);
+    setSaveNote("");
+    const unmatchedCount = Object.values(result.batches).reduce(
+      (sum, batch) => sum + batch.unmatched.length,
+      0,
+    );
+    const packRows = combined.map((row) => {
+      const next: Record<string, string | number> = {
+        상품: String(row.상품),
+        품목: String(row.품목),
+        용량: String(row.용량),
+        grams: Number(row.grams || 0),
+        합계: Number(row.합계 || 0),
+      };
+      for (const col of roundCols) next[col] = Number(row[col] || 0);
+      return next;
+    });
+    const saved = await saveProductionJob({
+      reportDate,
+      sourceFiles: files.map((f) => f.name),
+      rounds,
+      skuCount,
+      packCount,
+      unmatchedCount,
+      status: result.errors.length ? "partial" : "ok",
+      message: result.errors.length
+        ? result.errors.join(" / ")
+        : `${skuCount}종 · ${packCount}개 저장`,
+      rows: buildProductionRows(packRows, groupRows, rounds),
+    });
+    setSaving(false);
+    if (saved.ok) {
+      setSaveNote(`슈파베이스에 저장했습니다. (job #${saved.jobId})`);
+    } else {
+      setSaveNote(saved.error || "저장에 실패했습니다.");
+    }
   };
 
   return (
@@ -388,7 +435,16 @@ export function AggregatorApp() {
               >
                 카카오 공유용 이미지
               </button>
+              <button
+                type="button"
+                className="ghost-button"
+                onClick={() => void handleDbSave()}
+                disabled={saving}
+              >
+                {saving ? "DB 저장 중…" : "+ 오늘 집계 DB 저장"}
+              </button>
             </div>
+            {saveNote ? <p className="caption">{saveNote}</p> : null}
             {pngPreview && (
               <details style={{ marginTop: 12 }}>
                 <summary>카카오 공유 이미지 미리보기</summary>
