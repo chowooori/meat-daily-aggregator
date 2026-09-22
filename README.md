@@ -1,36 +1,43 @@
-# 일일 생산 집계표 (Streamlit 웹앱)
+# 일일 생산 집계 (Vercel / Next.js)
 
-택배 발송 엑셀을 올리면 용량별 제조 수량과 육회·육사시미 총 중량을 보여주는 웹 프로그램입니다.
-
-## 실행 방법
-
-1. `웹앱실행.bat` 을 더블클릭합니다.
-2. 브라우저가 `http://localhost:8501` 로 열립니다.
-3. 발송 엑셀(01·02·03)을 업로드합니다.
-
-직접 실행:
-
-```bash
-pip install -r requirements.txt
-streamlit run app.py
-```
+택배 발송 엑셀을 올리면 용량별 제조 수량과 육회·육사시미 총 중량을 보여주는 웹앱입니다.
+출고 엑셀 변환기와 같이 **브라우저에서만** 엑셀을 처리하고 Vercel에 배포합니다.
 
 ## 주요 기능
 
 - 파일명 끝 01 / 02 / 03 → 1차 / 2차 / 3차 집계
 - 상품·용량별 오늘 만들어야 할 개수
 - 육회·육사시미 전용량 중량(kg)
-- 엑셀 다운로드, 바탕화면 저장, 카카오 공유용 PNG
+- 엑셀 다운로드, 카카오 공유용 PNG
 
-저장 위치(이 PC에서 실행할 때): `바탕화면\일일생산집계\날짜`
+## 로컬 실행
 
-## 웹 주소로 바로 쓰기 (설치 없음)
+Node.js 20 이상:
 
-무료 Streamlit Community Cloud에 올리면 `https://....streamlit.app` 주소로 누구나 브라우저에서 쓸 수 있습니다.
+```powershell
+npm install
+npm run dev
+```
 
-1. [앱 배포하기](https://share.streamlit.io/deploy?repository=chowooori/meat-daily-aggregator&branch=main&mainModule=app.py) 에서 GitHub로 로그인
-2. **Create app** → 저장소 `chowooori/meat-daily-aggregator` , 파일 `app.py`
-3. Deploy 후 나온 주소를 팀원에게 공유
+브라우저에서 `http://localhost:3000` 을 엽니다.
 
-`Error installing requirements` 가 나오면 리눅스 시스템 패키지 설치가 막힌 경우가 많습니다. 이 저장소는 폰트를 앱에 포함해서 `packages.txt` 없이 배포합니다. GitHub에 최신 코드가 반영된 뒤 Streamlit에서 **Reboot app** 또는 다시 Deploy 하면 됩니다.
+테스트:
 
+```powershell
+npm test
+npm run build
+```
+
+## Vercel 배포
+
+1. 이 저장소를 GitHub에 푸시합니다.
+2. [Vercel](https://vercel.com/new)에서 Import → Framework: **Next.js**
+3. Deploy 후 나온 주소를 팀원에게 공유합니다.
+
+업로드한 발송 엑셀은 서버로 전송되지 않고, 사용자 브라우저 메모리에서만 집계됩니다.
+
+## 참고
+
+- 예전 Streamlit 버전(`streamlit_app.py`, `aggregator/`, `legacy/requirements-streamlit.txt`)은 로컬 참고용으로 남겨 두었습니다.
+  Vercel은 Next.js만 사용하므로 루트에 `app.py`·`requirements.txt`를 두지 않습니다.
+- 웹 배포·일상 사용은 Next.js 앱(`npm run dev` / Vercel)을 사용하세요.

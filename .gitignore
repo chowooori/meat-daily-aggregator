@@ -4,6 +4,11 @@ __pycache__/
 .pytest_cache/
 .streamlit/secrets.toml
 data/
+node_modules/
+.next/
+out/
+coverage/
+*.tsbuildinfo
 
 # 실제 발송 엑셀(개인정보)은 공개 저장소에 올리지 않음
 *EMP*.xls

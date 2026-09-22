@@ -1,10 +1,15 @@
 @echo off
-chcp 65001 >nul
 cd /d "%~dp0"
-set "PY=%LOCALAPPDATA%\Programs\Python\Python312\python.exe"
-if not exist "%PY%" set "PY=python"
-echo 일일 생산 집계 웹앱을 시작합니다...
-echo 브라우저가 열리면 엑셀을 업로드하세요.
-echo 주소: http://localhost:8501
-"%PY%" -m streamlit run app.py
-if errorlevel 1 pause
+where node >nul 2>nul
+if errorlevel 1 (
+  echo Node.js 가 필요합니다. https://nodejs.org 에서 LTS 를 설치한 뒤 다시 실행하세요.
+  pause
+  exit /b 1
+)
+if not exist node_modules (
+  echo 패키지 설치 중...
+  call npm install
+)
+echo 브라우저에서 http://localhost:3000 을 엽니다. 이 창을 닫지 마세요.
+call npm run dev
+pause
