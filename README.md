@@ -38,5 +38,6 @@ npm run build
 
 ## 참고
 
-- 예전 Streamlit 버전(`app.py`, `aggregator/`)은 로컬 참고용으로 남겨 두었습니다.
+- 예전 Streamlit 버전(`streamlit_app.py`, `aggregator/`)은 로컬 참고용으로 남겨 두었습니다.
+  Vercel은 Next.js만 사용하므로 루트에 `app.py`를 두지 않습니다.
 - 웹 배포·일상 사용은 Next.js 앱(`npm run dev` / Vercel)을 사용하세요.
