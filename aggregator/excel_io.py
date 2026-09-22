@@ -43,6 +43,22 @@ def _locate_header_row(raw: pd.DataFrame) -> int:
     return 0
 
 
+def _read_xls_with_xlrd(source: str | Path | BytesIO | BinaryIO) -> pd.DataFrame:
+    """구형 .xls — xlrd 1.2.x로 직접 읽기 (pandas xlrd 엔진은 2.x만 허용)."""
+    import xlrd
+
+    if isinstance(source, (str, Path)):
+        book = xlrd.open_workbook(str(source))
+    elif hasattr(source, "getvalue"):
+        book = xlrd.open_workbook(file_contents=source.getvalue())
+    else:
+        book = xlrd.open_workbook(file_contents=source.read())
+
+    sheet = book.sheet_by_index(0)
+    rows = [sheet.row_values(row_idx) for row_idx in range(sheet.nrows)]
+    return pd.DataFrame(rows, dtype=object)
+
+
 def read_orders(source: str | Path | BytesIO | BinaryIO) -> pd.DataFrame:
     name = getattr(source, "name", "")
     suffix = Path(str(name)).suffix.lower()
@@ -50,7 +66,7 @@ def read_orders(source: str | Path | BytesIO | BinaryIO) -> pd.DataFrame:
         suffix = Path(source).suffix.lower()
 
     if suffix == ".xls":
-        df_raw = pd.read_excel(source, header=None, dtype=object, engine="xlrd")
+        df_raw = _read_xls_with_xlrd(source)
     else:
         df_raw = pd.read_excel(source, header=None, dtype=object, engine="openpyxl")
 
