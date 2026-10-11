@@ -65,16 +65,15 @@ export function AggregatorApp() {
   const [result, setResult] = useState<BatchResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState(0);
-  const [pngPreview, setPngPreview] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveNote, setSaveNote] = useState("");
+  const [ackUnmatched, setAckUnmatched] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     async function run() {
       if (!files.length) {
         setResult(null);
-        setPngPreview(null);
         return;
       }
       setLoading(true);
@@ -108,6 +107,7 @@ export function AggregatorApp() {
         setResult({ batches, details, errors });
         setActiveTab(0);
         setSaveNote("");
+        setAckUnmatched(false);
         setLoading(false);
       }
     }
@@ -148,13 +148,20 @@ export function AggregatorApp() {
     [result],
   );
 
-  const roundCols = useMemo(() => rounds.map(roundLabel), [rounds]);
-  const displayCols = useMemo(
-    () => ["상품", "용량", ...roundCols, "합계"],
-    [roundCols],
+  const unmatched = useMemo(
+    () =>
+      result
+        ? rounds.flatMap((roundNo) =>
+            result.batches[roundNo].unmatched.map((text) => ({ roundNo, text })),
+          )
+        : [],
+    [result, rounds],
   );
-  const groupCols = useMemo(
-    () => ["품목", "단위", ...roundCols, "합계"],
+  const shareBlocked = unmatched.length > 0 && !ackUnmatched;
+
+  const roundCols = useMemo(() => rounds.map(roundLabel), [rounds]);
+  const pngCols = useMemo(
+    () => ["품목", "용량", ...roundCols, "합계"],
     [roundCols],
   );
   const groupRows = useMemo(
@@ -181,23 +188,19 @@ export function AggregatorApp() {
   const skuCount = combined.length;
   const packCount = combined.reduce((sum, row) => sum + Number(row.합계 || 0), 0);
 
-  useEffect(() => {
-    if (!combined.length) {
-      setPngPreview(null);
-      return;
-    }
+  const pngPreview = useMemo(() => {
+    if (!combined.length) return null;
     try {
       const qtyRows = combined.map((row) => {
         const next: Record<string, string | number> = {};
-        for (const c of displayCols) next[c] = row[c] ?? "";
+        for (const c of pngCols) next[c] = row[c] ?? "";
         return next;
       });
-      const dataUrl = renderSharePng(qtyRows, groupRows, rounds, reportDate);
-      setPngPreview(dataUrl);
+      return renderSharePng(qtyRows, groupRows, rounds, reportDate);
     } catch {
-      setPngPreview(null);
+      return null;
     }
-  }, [combined, displayCols, groupRows, rounds, reportDate]);
+  }, [combined, pngCols, groupRows, rounds, reportDate]);
 
   const handleExcelDownload = () => {
     if (!result || !Object.keys(result.batches).length) return;
@@ -211,18 +214,17 @@ export function AggregatorApp() {
   };
 
   const handlePngDownload = () => {
-    if (!pngPreview) return;
+    if (!pngPreview || shareBlocked) return;
     downloadBlob(dataUrlToBlob(pngPreview), pngFileName(reportDate));
   };
 
   const handleDbSave = async () => {
-    if (!result || !Object.keys(result.batches).length || saving) return;
+    if (!result || !Object.keys(result.batches).length || saving || shareBlocked) {
+      return;
+    }
     setSaving(true);
     setSaveNote("");
-    const unmatchedCount = Object.values(result.batches).reduce(
-      (sum, batch) => sum + batch.unmatched.length,
-      0,
-    );
+    const unmatchedCount = unmatched.length;
     const packRows = combined.map((row) => {
       const next: Record<string, string | number> = {
         상품: String(row.상품),
@@ -249,18 +251,37 @@ export function AggregatorApp() {
     });
     setSaving(false);
     if (saved.ok) {
-      setSaveNote(`슈파베이스에 저장했습니다. (job #${saved.jobId})`);
+      setSaveNote(
+        `${reportDate.getMonth() + 1}월 ${reportDate.getDate()}일 ${rounds.join("·")}차 집계를 저장했습니다.`,
+      );
     } else {
-      setSaveNote(saved.error || "저장에 실패했습니다.");
+      setSaveNote(`저장하지 못했습니다. ${saved.error || ""}`.trim());
     }
   };
 
+  const qtyTableRows = combined.map((row) => ({
+    품목: String(row.품목),
+    용량: String(row.용량),
+    ...Object.fromEntries(qtyColumns.map((c) => [c.key, Number(row[c.key] || 0)])),
+  }));
+  const kgTableRows = groupRows.map((row) => ({
+    품목: String(row.품목),
+    ...Object.fromEntries(kgQtyColumns.map((c) => [c.key, Number(row[c.key] || 0)])),
+  }));
+  const roundSums = rounds.map((roundNo) => {
+    const col = roundLabel(roundNo);
+    return {
+      col,
+      sum: combined.reduce((sum, row) => sum + Number(row[col] || 0), 0),
+    };
+  });
+
   return (
     <div className="workspace">
-      <section className="card">
+      <section className="card" aria-labelledby="upload-title">
         <div className="card-head">
           <div>
-            <h3>발송 엑셀 업로드</h3>
+            <h2 id="upload-title">발송 엑셀 업로드</h2>
             <p className="hint">
               당일 01 · 02 · 03 파일을 한 번에 올려 주세요. xls, xlsx 모두
               가능합니다. (01→1차 · 02→2차 · 03→3차)
@@ -294,159 +315,134 @@ export function AggregatorApp() {
         <div className="guide-grid">
           <div className="guide-card">
             <div className="guide-num">1</div>
-            <h4>생산일자 확인</h4>
+            <h3>생산일자 확인</h3>
             <p>업로드 카드에서 생산일자가 오늘인지 확인합니다.</p>
           </div>
           <div className="guide-card">
             <div className="guide-num">2</div>
-            <h4>발송 엑셀 업로드</h4>
+            <h3>발송 엑셀 업로드</h3>
             <p>파일명 끝 01·02·03이 1차·2차·3차로 자동 구분됩니다.</p>
           </div>
           <div className="guide-card">
             <div className="guide-num">3</div>
-            <h4>엑셀·이미지 공유</h4>
+            <h3>엑셀·이미지 공유</h3>
             <p>집계표를 내려받아 카카오톡으로 보내면 됩니다.</p>
           </div>
         </div>
       )}
 
-      {loading && <p className="caption">집계 중…</p>}
+      <p className="caption" aria-live="polite">
+        {loading ? "집계 중…" : ""}
+      </p>
 
       {result?.errors?.length ? (
-        <div className="errors">
+        <div className="errors" role="alert">
           {result.errors.map((msg) => (
             <p key={msg}>{msg}</p>
           ))}
         </div>
       ) : null}
 
+      {unmatched.length > 0 && (
+        <section className="alert" role="alert" aria-labelledby="unmatched-title">
+          <h2 id="unmatched-title">인식하지 못한 주문 {unmatched.length}건</h2>
+          <p>
+            아래 주문은 수량에 들어가지 않았습니다. 옵션 문구가 바뀌었거나 새
+            상품이면 품목 등록이 필요합니다.
+          </p>
+          <ul>
+            {unmatched.map((item, idx) => (
+              <li key={`${item.roundNo}-${idx}`}>
+                <span className="round">{roundLabel(item.roundNo)}</span>
+                {item.text}
+              </li>
+            ))}
+          </ul>
+          <label className="ack">
+            <input
+              type="checkbox"
+              checked={ackUnmatched}
+              onChange={(e) => setAckUnmatched(e.target.checked)}
+            />
+            빠진 주문을 확인했습니다. 이대로 이미지와 저장을 진행합니다.
+          </label>
+        </section>
+      )}
+
       {result && Object.keys(result.batches).length > 0 && (
         <>
-          <div>
-            <p className="section-label">Today</p>
-            <h2 style={{ margin: "0 0 6px", fontSize: "1.25rem" }}>
-              오늘 만들어야 할 수량
-            </h2>
-            <p className="caption" style={{ marginBottom: 12 }}>
-              차수 파일의 주문을 용량별로 합친 개수입니다. 합계는 당일 전체
-              제조량입니다.
-            </p>
-          </div>
-
-          <div className="metrics">
-            <div className="metric">
-              <div className="label">제조할 상품(용량)</div>
-              <div className="value">
-                {skuCount}
-                <span>종</span>
-              </div>
+          <section className="sheet-section" aria-labelledby="today-title">
+            <div className="sheet-head">
+              <h2 id="today-title">오늘 만들어야 할 수량</h2>
+              <p className="summary">
+                <strong>{skuCount}종 · 총 {packCount}개</strong>
+                {roundSums.length > 1 ? (
+                  <span>
+                    {roundSums.map((r) => `${r.col} ${r.sum}`).join(" · ")}
+                  </span>
+                ) : null}
+              </p>
             </div>
-            <div className="metric">
-              <div className="label">당일 합계</div>
-              <div className="value">
-                {packCount}
-                <span>개</span>
-              </div>
+            <ProductionTable
+              caption="오늘 만들어야 할 수량"
+              rows={qtyTableRows}
+              nameKey="품목"
+              subKey="용량"
+              qtyColumns={qtyColumns}
+            />
+          </section>
+
+          <section className="sheet-section" aria-labelledby="kg-title">
+            <div className="sheet-head">
+              <h3 id="kg-title">육회·육사시미 중량 합계</h3>
+              <p className="caption">모든 용량을 kg으로 합친 값입니다.</p>
             </div>
-            {rounds.map((roundNo) => {
-              const col = roundLabel(roundNo);
-              const roundSum = combined.reduce(
-                (sum, row) => sum + Number(row[col] || 0),
-                0,
-              );
-              return (
-                <div className="metric" key={roundNo}>
-                  <div className="label">{col}</div>
-                  <div className="value">
-                    {roundSum}
-                    <span>개</span>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+            <ProductionTable
+              caption="육회·육사시미 중량 합계"
+              rows={kgTableRows}
+              nameKey="품목"
+              qtyColumns={kgQtyColumns}
+            />
+          </section>
 
-          <ProductionTable
-            rows={combined.map((row) => ({
-              상품: String(row.품목 || row.상품),
-              용량: String(row.용량),
-              구분: String(row.품목),
-              ...Object.fromEntries(
-                qtyColumns.map((c) => [c.key, Number(row[c.key] || 0)]),
-              ),
-            }))}
-            nameKey="상품"
-            subKey="용량"
-            descKey="구분"
-            qtyColumns={qtyColumns}
-            totalKey="합계"
-            primaryActionLabel="엑셀 다운로드"
-            onPrimaryAction={handleExcelDownload}
-          />
-
-          <div>
-            <h2 style={{ margin: "8px 0 6px", fontSize: "1.15rem" }}>
-              육회·육사시미 전용량 중량
-            </h2>
-            <p className="caption" style={{ marginBottom: 12 }}>
-              모든 용량을 kg으로 합친 값입니다.
-            </p>
-          </div>
-
-          <ProductionTable
-            rows={groupRows.map((row) => ({
-              상품: String(row.품목),
-              용량: String(row.단위 ?? "kg"),
-              구분: "중량 합계",
-              ...Object.fromEntries(
-                kgQtyColumns.map((c) => [c.key, Number(row[c.key] || 0)]),
-              ),
-            }))}
-            nameKey="상품"
-            subKey="용량"
-            descKey="구분"
-            qtyColumns={kgQtyColumns}
-            totalKey="합계"
-            searchPlaceholder="품목 검색…"
-            primaryActionLabel="카카오 이미지"
-            onPrimaryAction={handlePngDownload}
-          />
-
-          <section className="card">
-            <p className="section-label">Share</p>
-            <h3>저장 · 공유</h3>
+          <section className="card" aria-labelledby="share-title">
+            <h2 id="share-title">저장 · 공유</h2>
             <p className="hint" style={{ marginBottom: 12 }}>
-              엑셀과 이미지를 받아 카카오톡으로 보내면 됩니다.
+              이미지를 받아 카카오톡으로 보내면 됩니다.
             </p>
             <div className="actions">
               <button
                 type="button"
                 className="primary-button"
                 style={{ marginTop: 0 }}
-                onClick={handleExcelDownload}
-              >
-                + 엑셀 다운로드
-              </button>
-              <button
-                type="button"
-                className="ghost-button"
                 onClick={handlePngDownload}
-                disabled={!pngPreview}
+                disabled={!pngPreview || shareBlocked}
               >
                 카카오 공유용 이미지
               </button>
               <button
                 type="button"
                 className="ghost-button"
-                onClick={() => void handleDbSave()}
-                disabled={saving}
+                onClick={handleExcelDownload}
               >
-                {saving ? "DB 저장 중…" : "+ 오늘 집계 DB 저장"}
+                엑셀 다운로드
+              </button>
+              <button
+                type="button"
+                className="ghost-button"
+                onClick={() => void handleDbSave()}
+                disabled={saving || shareBlocked}
+              >
+                {saving ? "저장 중…" : "오늘 집계 DB 저장"}
               </button>
             </div>
-            {saveNote ? <p className="caption">{saveNote}</p> : null}
+            <p className="caption" aria-live="polite" style={{ marginTop: 8 }}>
+              {shareBlocked
+                ? "인식하지 못한 주문을 먼저 확인해 주세요."
+                : saveNote}
+            </p>
             {pngPreview && (
-              <details style={{ marginTop: 12 }}>
+              <details open style={{ marginTop: 12 }}>
                 <summary>카카오 공유 이미지 미리보기</summary>
                 <div className="preview">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -456,54 +452,54 @@ export function AggregatorApp() {
             )}
           </section>
 
-          <div>
-            <p className="section-label">Details</p>
-            <h2 style={{ margin: "0 0 10px", fontSize: "1.15rem" }}>
+          <section aria-labelledby="detail-title">
+            <h2 id="detail-title" className="section-title">
               차수 상세
             </h2>
-          </div>
 
-          <div className="tabs">
-            {rounds.map((roundNo, idx) => (
+            <div className="tabs" role="tablist" aria-label="차수 상세">
+              {rounds.map((roundNo, idx) => (
+                <button
+                  key={roundNo}
+                  type="button"
+                  role="tab"
+                  aria-selected={activeTab === idx}
+                  className={activeTab === idx ? "is-active" : undefined}
+                  onClick={() => setActiveTab(idx)}
+                >
+                  {roundLabel(roundNo)} 상세
+                </button>
+              ))}
               <button
-                key={roundNo}
                 type="button"
-                className={activeTab === idx ? "is-active" : undefined}
-                onClick={() => setActiveTab(idx)}
+                role="tab"
+                aria-selected={activeTab === rounds.length}
+                className={activeTab === rounds.length ? "is-active" : undefined}
+                onClick={() => setActiveTab(rounds.length)}
               >
-                {roundLabel(roundNo)} 상세
+                전체 용량표
               </button>
-            ))}
-            <button
-              type="button"
-              className={activeTab === rounds.length ? "is-active" : undefined}
-              onClick={() => setActiveTab(rounds.length)}
-            >
-              전체 용량표
-            </button>
-          </div>
+            </div>
 
-          {activeTab < rounds.length &&
-            (() => {
-              const roundNo = rounds[activeTab];
-              const totals = result.batches[roundNo];
-              const rows = productionRows(totals, { onlyOrdered: true }).map(
-                (r) => ({
-                  상품: r.품목,
-                  용량: r.용량,
-                  구분: r.상품,
-                  합계: r["총 개수"],
-                }),
-              );
-              const detail = result.details[roundNo] || [];
-              return (
-                <div className="workspace">
-                  {rows.length ? (
+            {activeTab < rounds.length &&
+              (() => {
+                const roundNo = rounds[activeTab];
+                const totals = result.batches[roundNo];
+                const rows = productionRows(totals, { onlyOrdered: true }).map(
+                  (r) => ({
+                    품목: r.품목,
+                    용량: r.용량,
+                    합계: r["총 개수"],
+                  }),
+                );
+                const detail = result.details[roundNo] || [];
+                return (
+                  <div className="workspace" role="tabpanel">
                     <ProductionTable
+                      caption={`${roundLabel(roundNo)} 수량`}
                       rows={rows}
-                      nameKey="상품"
+                      nameKey="품목"
                       subKey="용량"
-                      descKey="구분"
                       qtyColumns={[
                         {
                           key: "합계",
@@ -512,88 +508,57 @@ export function AggregatorApp() {
                           emphasize: "total",
                         },
                       ]}
-                      totalKey="합계"
                     />
-                  ) : (
-                    <p className="caption">이 차수에 집계된 고기가 없습니다.</p>
-                  )}
-                  {detail.length > 0 && (
-                    <details>
-                      <summary>파싱 상세</summary>
-                      <DataTable
-                        columns={[
-                          "원문",
-                          "품목",
-                          "용량(g)",
-                          "묶음수량",
-                          "주문수량",
-                          "최종수량",
-                          "구분",
-                          "비고",
-                        ]}
-                        rows={detail.map((d) => ({
-                          ...d,
-                          "용량(g)": d["용량(g)"] ?? "",
-                        }))}
-                        searchKeys={["원문", "품목"]}
-                      />
-                    </details>
-                  )}
-                  {totals.unmatched.length > 0 && (
-                    <>
-                      <p className="caption" style={{ color: "var(--danger)" }}>
-                        미인식 항목이 있습니다.
-                      </p>
-                      <DataTable
-                        columns={["원문"]}
-                        rows={totals.unmatched.map((t) => ({ 원문: t }))}
-                      />
-                    </>
-                  )}
-                </div>
-              );
-            })()}
+                    {detail.length > 0 && (
+                      <details>
+                        <summary>주문별 해석 내역</summary>
+                        <DataTable
+                          columns={[
+                            "원문",
+                            "품목",
+                            "용량(g)",
+                            "묶음수량",
+                            "주문수량",
+                            "최종수량",
+                            "구분",
+                            "비고",
+                          ]}
+                          rows={detail.map((d) => ({
+                            ...d,
+                            "용량(g)": d["용량(g)"] ?? "",
+                          }))}
+                          searchKeys={["원문", "품목"]}
+                        />
+                      </details>
+                    )}
+                  </div>
+                );
+              })()}
 
-          {activeTab === rounds.length && (
-            <div className="workspace">
-              <ProductionTable
-                rows={groupRows.map((row) => ({
-                  상품: String(row.품목),
-                  용량: String(row.단위 ?? "kg"),
-                  구분: "중량 합계",
-                  ...Object.fromEntries(
-                    kgQtyColumns.map((c) => [c.key, Number(row[c.key] || 0)]),
-                  ),
-                }))}
-                nameKey="상품"
-                subKey="용량"
-                descKey="구분"
-                qtyColumns={kgQtyColumns}
-                totalKey="합계"
-              />
-              <ProductionTable
-                rows={allCombined.map((row) => ({
-                  상품: String(row.품목 || row.상품),
-                  용량: String(row.용량),
-                  구분: String(row.품목),
-                  ...Object.fromEntries(
-                    qtyColumns.map((c) => [c.key, Number(row[c.key] || 0)]),
-                  ),
-                }))}
-                nameKey="상품"
-                subKey="용량"
-                descKey="구분"
-                qtyColumns={qtyColumns}
-                totalKey="합계"
-              />
-            </div>
-          )}
+            {activeTab === rounds.length && (
+              <div className="workspace" role="tabpanel">
+                <ProductionTable
+                  caption="전체 용량표"
+                  rows={allCombined.map((row) => ({
+                    품목: String(row.품목),
+                    용량: String(row.용량),
+                    ...Object.fromEntries(
+                      qtyColumns.map((c) => [c.key, Number(row[c.key] || 0)]),
+                    ),
+                  }))}
+                  nameKey="품목"
+                  subKey="용량"
+                  qtyColumns={qtyColumns}
+                />
+              </div>
+            )}
+          </section>
         </>
       )}
 
       <p className="note">
-        브라우저에서만 처리합니다. Vercel에 배포해도 원본 엑셀은 서버로 올라가지
-        않습니다.
+        엑셀 원본은 이 브라우저에서만 읽습니다. 저장할 때는 집계 결과만
+        보냅니다.
       </p>
     </div>
   );

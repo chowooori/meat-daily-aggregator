@@ -4,7 +4,6 @@ export default function HomePage() {
   return (
     <div className="app-shell">
       <header className="topbar">
-        <p className="eyebrow">Daily Production</p>
         <h1>일일 생산 집계</h1>
         <p className="muted">
           발송 엑셀을 올리면 차수별 제조 수량과 육회·육사시미 중량이 바로
