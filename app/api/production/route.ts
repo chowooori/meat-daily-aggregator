@@ -4,7 +4,7 @@ import {
   type ProductionRowRecord,
   type SaveProductionInput,
 } from "@/lib/supabase/saveProduction";
-import { getSupabaseServerClient } from "@/lib/supabase/server";
+import { getSupabaseServerClient, missingSupabaseEnv } from "@/lib/supabase/server";
 
 const MAX_ROWS = 1000;
 
@@ -47,7 +47,7 @@ export async function POST(request: Request) {
   const supabase = getSupabaseServerClient();
   if (!supabase) {
     return NextResponse.json(
-      { ok: false, error: "서버 비밀 키(SUPABASE_SECRET_KEY)가 없습니다." },
+      { ok: false, error: `서버 환경변수가 없습니다: ${missingSupabaseEnv().join(", ")}` },
       { status: 500 },
     );
   }
