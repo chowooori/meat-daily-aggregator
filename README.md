@@ -42,10 +42,13 @@ npm run build
 
 원본 EMP 엑셀은 저장하지 않고 **집계 결과만** 넣습니다. 같은 날 다시 저장하면 새 job이 추가됩니다.
 
+저장은 브라우저가 아니라 서버(`/api/production`)가 비밀 키로 합니다. 두 테이블은 공개 키로 접근할 수 없습니다.
+
 Vercel Environment Variables에도 동일하게 등록하세요.
 
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- `SUPABASE_SECRET_KEY` (서버 전용, `NEXT_PUBLIC_`을 붙이지 않음)
 
 ## Vercel 배포
 
@@ -53,7 +56,7 @@ Vercel Environment Variables에도 동일하게 등록하세요.
 2. [Vercel](https://vercel.com/new)에서 Import → Framework: **Next.js**
 3. Deploy 후 나온 주소를 팀원에게 공유합니다.
 
-업로드한 발송 엑셀은 서버로 전송되지 않고, 사용자 브라우저 메모리에서만 집계됩니다.
+업로드한 발송 엑셀은 서버로 전송되지 않고 브라우저에서만 집계됩니다. 저장할 때는 집계 결과만 서버로 보냅니다.
 
 ## 참고
 

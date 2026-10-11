@@ -21,3 +21,6 @@ scripts/_*.txt
 scripts/_*.xlsx
 scripts/emp_verify.txt
 scripts/satae_check.txt
+sample_orders.xlsx
+
+.scratch/
