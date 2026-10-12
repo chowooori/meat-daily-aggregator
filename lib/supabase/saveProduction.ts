@@ -1,4 +1,4 @@
-import { getSupabaseBrowserClient } from "./client";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 const BATCH_SIZE = 200;
 
@@ -108,17 +108,10 @@ export function buildProductionRows(
   return records;
 }
 
-export async function saveProductionJob(
+export async function insertProductionJob(
+  supabase: SupabaseClient,
   input: SaveProductionInput,
 ): Promise<SaveProductionResult> {
-  const supabase = getSupabaseBrowserClient();
-  if (!supabase) {
-    return {
-      ok: false,
-      error: "슈파베이스 환경변수가 없습니다.",
-    };
-  }
-
   const { data: job, error: jobError } = await supabase
     .from("production_jobs")
     .insert({
@@ -147,17 +140,33 @@ export async function saveProductionJob(
       ...row,
       job_id: jobId,
     }));
-    const { error: rowError } = await supabase
-      .from("production_rows")
-      .insert(chunk);
+    const { error: rowError } = await supabase.from("production_rows").insert(chunk);
     if (rowError) {
+      await supabase.from("production_jobs").delete().eq("id", jobId);
       return {
         ok: false,
-        jobId,
         error: rowError.message,
       };
     }
   }
 
   return { ok: true, jobId };
+}
+
+export async function saveProductionJob(
+  input: SaveProductionInput,
+): Promise<SaveProductionResult> {
+  const response = await fetch("/api/production", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      ...input,
+      reportDate: ymd(input.reportDate),
+    }),
+  });
+  const body = (await response.json()) as SaveProductionResult;
+  if (!response.ok || !body.ok) {
+    return { ok: false, error: body.error || "저장에 실패했습니다." };
+  }
+  return body;
 }
