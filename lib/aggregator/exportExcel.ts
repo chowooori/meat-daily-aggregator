@@ -5,8 +5,10 @@ import {
   combineBatches,
   meatGroupSubtotals,
   roundLabel,
+  sortRounds,
 } from "./batches";
 import type { DailyTotals } from "./categories";
+import type { ManualLine } from "./manual";
 import { productionRows } from "./summary";
 
 function ymd(date: Date): string {
@@ -19,10 +21,9 @@ function ymd(date: Date): string {
 export function buildReportWorkbook(
   reportDate: Date,
   batches: Record<number, DailyTotals>,
+  manualLines: ManualLine[] = [],
 ): XLSX.WorkBook {
-  const rounds = Object.keys(batches)
-    .map(Number)
-    .sort((a, b) => a - b);
+  const rounds = sortRounds(Object.keys(batches).map(Number));
   const rows = combineBatches(batches, { onlyOrdered: false });
   const qtyHeaders = [...rounds.map(roundLabel), "합계"];
   const headers = ["상품", "품목", "용량", ...qtyHeaders];
@@ -62,6 +63,15 @@ export function buildReportWorkbook(
   aoa.push([]);
   aoa.push(["주문 있는 상품 수", "", "", ...qtyHeaders.slice(0, -1).map(() => ""), orderedCount]);
 
+  if (manualLines.length) {
+    aoa.push([]);
+    aoa.push(["수동 입력 내역"]);
+    aoa.push(["품목", "용량", "수량", "메모(거래처)"]);
+    for (const line of manualLines) {
+      aoa.push([line.product, line.size, line.qty, line.memo]);
+    }
+  }
+
   const sheet = XLSX.utils.aoa_to_sheet(aoa);
   sheet["!cols"] = [
     { wch: 22 },
@@ -78,8 +88,9 @@ export function buildReportWorkbook(
 export function reportBytes(
   reportDate: Date,
   batches: Record<number, DailyTotals>,
+  manualLines: ManualLine[] = [],
 ): ArrayBuffer {
-  const wb = buildReportWorkbook(reportDate, batches);
+  const wb = buildReportWorkbook(reportDate, batches, manualLines);
   return XLSX.write(wb, { bookType: "xlsx", type: "array" }) as ArrayBuffer;
 }
 

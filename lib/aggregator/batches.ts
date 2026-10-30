@@ -13,8 +13,17 @@ export function detectRound(filename: string, fallback?: number): number {
   return 1;
 }
 
+/** 수동 입력은 차수 0으로 저장하고, 화면에는 "수동"으로 보여 줍니다. */
+export const MANUAL_ROUND = 0;
+
 export function roundLabel(roundNo: number): string {
-  return `${roundNo}차`;
+  return roundNo === MANUAL_ROUND ? "수동" : `${roundNo}차`;
+}
+
+/** 1차·2차·3차 다음에 수동이 오도록 정렬합니다. */
+export function sortRounds(rounds: number[]): number[] {
+  const rank = (r: number) => (r === MANUAL_ROUND ? Number.MAX_SAFE_INTEGER : r);
+  return [...rounds].sort((a, b) => rank(a) - rank(b));
 }
 
 export type CombinedRow = {
@@ -35,9 +44,7 @@ export function combineBatches(
   const orderedKeys: Array<[string, string, string, number]> = [];
   const seen = new Set<string>();
 
-  for (const roundNo of Object.keys(batches)
-    .map(Number)
-    .sort((a, b) => a - b)) {
+  for (const roundNo of sortRounds(Object.keys(batches).map(Number))) {
     const mapping: Record<string, ProductionRow> = {};
     for (const row of productionRows(batches[roundNo], { onlyOrdered: false })) {
       mapping[row.상품] = row;
@@ -49,9 +56,7 @@ export function combineBatches(
     byRound[roundNo] = mapping;
   }
 
-  const rounds = Object.keys(byRound)
-    .map(Number)
-    .sort((a, b) => a - b);
+  const rounds = sortRounds(Object.keys(byRound).map(Number));
   const combined: CombinedRow[] = [];
 
   for (const [product, category, size, grams] of orderedKeys) {

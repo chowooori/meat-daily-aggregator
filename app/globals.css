@@ -243,6 +243,53 @@ select {
   color: var(--danger);
 }
 
+.manual-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.manual-form select,
+.manual-form input {
+  border: 1px solid #cfd5df;
+  border-radius: 8px;
+  padding: 0.5rem 0.6rem;
+  background: #fff;
+  color: var(--text);
+}
+
+.manual-qty {
+  width: 72px;
+  text-align: right;
+}
+
+.manual-memo {
+  flex: 1 1 160px;
+}
+
+.manual-memo input {
+  width: 100%;
+}
+
+.manual-line {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: none;
+  padding: 0;
+  text-align: left;
+  cursor: pointer;
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.upload-list li.is-editing {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+}
+
 .round-status {
   margin: 0;
   display: flex;

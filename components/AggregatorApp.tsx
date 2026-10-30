@@ -1,10 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   combineBatches,
+  MANUAL_ROUND,
   meatGroupSubtotals,
   roundLabel,
+  sortRounds,
 } from "@/lib/aggregator/batches";
 import type { DailyTotals } from "@/lib/aggregator/categories";
 import {
@@ -22,6 +24,12 @@ import {
   pngFileName,
   renderSharePng,
 } from "@/lib/aggregator/exportPng";
+import {
+  buildManualRows,
+  manualLinesToTotals,
+  manualSignature,
+  type ManualLine,
+} from "@/lib/aggregator/manual";
 import { savedRowsToTotals } from "@/lib/aggregator/savedRounds";
 import { productionRows } from "@/lib/aggregator/summary";
 import {
@@ -37,6 +45,7 @@ import {
   uploadKey,
   type Upload,
 } from "./FileDropMulti";
+import { ManualEntry } from "./ManualEntry";
 import { ProductionTable, type QtyColumn } from "./ProductionTable";
 
 function todayInputValue(): string {
@@ -73,6 +82,17 @@ type SavedState = {
   error: string;
 };
 
+function savedManualLines(rounds: SavedRound[]): ManualLine[] {
+  const manual = rounds.find((r) => r.round === MANUAL_ROUND);
+  return (manual?.rows ?? []).map((row, idx) => ({
+    id: `saved-${manual?.jobId}-${idx}`,
+    product: row.product,
+    size: row.sizeLabel,
+    qty: row.qty,
+    memo: row.memo ?? "",
+  }));
+}
+
 function hhmm(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "";
@@ -93,17 +113,27 @@ export function AggregatorApp() {
   const [confirmOverwrite, setConfirmOverwrite] = useState(false);
   const [saveNote, setSaveNote] = useState("");
   const [ackUnmatched, setAckUnmatched] = useState(false);
+  const [manualLines, setManualLines] = useState<ManualLine[]>([]);
+  const [manualSaving, setManualSaving] = useState(false);
+  const [manualNote, setManualNote] = useState("");
+  const manualKeepRef = useRef<{ date: string; dirty: boolean }>({ date: "", dirty: false });
 
   useEffect(() => {
     let cancelled = false;
     void fetchSavedRounds(reportDateStr).then((loaded) => {
       if (cancelled) return;
+      const rounds = loaded.ok ? loaded.rounds : [];
       setSavedState({
         date: reportDateStr,
         reloadKey,
-        rounds: loaded.ok ? loaded.rounds : [],
+        rounds,
         error: loaded.ok ? "" : loaded.error,
       });
+      // 같은 날짜에서 고치던 수동 입력이 있으면 덮어쓰지 않습니다.
+      const keep = manualKeepRef.current;
+      if (!(keep.date === reportDateStr && keep.dirty)) {
+        setManualLines(savedManualLines(rounds));
+      }
     });
     return () => {
       cancelled = true;
@@ -182,20 +212,31 @@ export function AggregatorApp() {
     [uploadedBatches],
   );
 
-  /** 저장된 차수 위에 이번에 올린 차수를 덮어 합친 오늘의 누적 집계. */
+  const savedManual = useMemo(
+    () =>
+      savedState && savedState.date === reportDateStr
+        ? savedManualLines(savedState.rounds)
+        : [],
+    [savedState, reportDateStr],
+  );
+  const savedManualRound = savedState?.date === reportDateStr
+    ? savedState.rounds.find((r) => r.round === MANUAL_ROUND)
+    : undefined;
+  const manualDirty = manualSignature(manualLines) !== manualSignature(savedManual);
+
+  useEffect(() => {
+    manualKeepRef.current = { date: reportDateStr, dirty: manualDirty };
+  }, [reportDateStr, manualDirty]);
+
+  /** 저장된 차수 위에 이번에 올린 차수를 덮어 합치고, 화면의 수동 입력을 "수동" 열로 더한 오늘의 누적 집계. */
   const batches = useMemo(() => {
     const merged: Record<number, DailyTotals> = {};
     for (const saved of savedRounds) merged[saved.round] = savedRowsToTotals(saved.rows);
+    if (manualLines.length) merged[MANUAL_ROUND] = manualLinesToTotals(manualLines);
     return { ...merged, ...uploadedBatches };
-  }, [savedRounds, uploadedBatches]);
+  }, [savedRounds, uploadedBatches, manualLines]);
 
-  const rounds = useMemo(
-    () =>
-      Object.keys(batches)
-        .map(Number)
-        .sort((a, b) => a - b),
-    [batches],
-  );
+  const rounds = useMemo(() => sortRounds(Object.keys(batches).map(Number)), [batches]);
 
   const unsavedRounds = useMemo(
     () =>
@@ -230,6 +271,15 @@ export function AggregatorApp() {
     if (saved) return { round: r, text: `${r}차 저장됨 ${hhmm(saved.savedAt)}`, tone: "saved" };
     return { round: r, text: `${r}차 없음`, tone: "none" };
   });
+  const manualStatus = manualDirty
+    ? { round: MANUAL_ROUND, text: "수동 수정됨(미저장)", tone: "pending" }
+    : savedManualRound && savedManual.length
+      ? { round: MANUAL_ROUND, text: `수동 저장됨 ${hhmm(savedManualRound.savedAt)}`, tone: "saved" }
+      : { round: MANUAL_ROUND, text: "수동 없음", tone: "none" };
+  const unsavedLabels = [
+    ...unsavedRounds.map((r) => `${r}차`),
+    ...(manualDirty ? ["수동 입력"] : []),
+  ];
   const overwriteTargets = unsavedRounds
     .map((r) => savedRounds.find((s) => s.round === r))
     .filter((s): s is SavedRound => Boolean(s));
@@ -279,7 +329,7 @@ export function AggregatorApp() {
 
   const handleExcelDownload = () => {
     if (!rounds.length) return;
-    const bytes = reportBytes(reportDate, batches);
+    const bytes = reportBytes(reportDate, batches, manualLines);
     downloadBlob(
       new Blob([bytes], {
         type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -351,19 +401,51 @@ export function AggregatorApp() {
 
   const requestDateChange = (value: string) => {
     if (!value || value === reportDateStr) return;
-    if (unsavedRounds.length) {
+    if (unsavedLabels.length) {
       setPendingDate(value);
       return;
     }
     setUploads([]);
     setSavedKeys(new Set());
+    setManualLines([]);
+    setManualNote("");
     setReportDateStr(value);
+  };
+
+  /** 그날의 수동 입력 전체를 한 묶음(차수 0)으로 저장합니다. 다시 저장하면 최신본이 됩니다. */
+  const handleManualSave = async () => {
+    if (manualSaving || !manualDirty) return;
+    setManualSaving(true);
+    setManualNote("");
+    const packCount = manualLines.reduce((sum, l) => sum + l.qty, 0);
+    const saved = await saveProductionJob({
+      reportDate,
+      sourceFiles: [],
+      rounds: [MANUAL_ROUND],
+      skuCount: manualLines.length,
+      packCount,
+      unmatchedCount: 0,
+      status: "ok",
+      message: `수동 ${manualLines.length}줄 · ${packCount}개 저장`,
+      rows: buildManualRows(manualLines),
+    });
+    setManualSaving(false);
+    if (saved.ok) {
+      manualKeepRef.current = { date: reportDateStr, dirty: false };
+      setManualNote(`${reportDate.getMonth() + 1}월 ${reportDate.getDate()}일 수동 입력을 저장했습니다.`);
+      setReloadKey((k) => k + 1);
+    } else {
+      setManualNote(`저장하지 못했습니다. ${saved.error || ""}`.trim());
+    }
   };
 
   const confirmDateChange = () => {
     if (!pendingDate) return;
     setUploads([]);
     setSavedKeys(new Set());
+    setManualLines([]);
+    setManualNote("");
+    manualKeepRef.current = { date: "", dirty: false };
     setReportDateStr(pendingDate);
     setPendingDate(null);
   };
@@ -409,8 +491,8 @@ export function AggregatorApp() {
         {pendingDate && (
           <div className="confirm-box" role="alertdialog" aria-labelledby="date-confirm-title">
             <p id="date-confirm-title">
-              저장하지 않은 {unsavedRounds.join("·")}차가 있습니다. 날짜를 바꾸면 올린
-              파일이 비워집니다.
+              아직 저장하지 않은 것이 있습니다({unsavedLabels.join(", ")}). 날짜를 바꾸면
+              올린 파일과 고치던 수동 입력이 비워집니다.
             </p>
             <div className="actions">
               <button type="button" className="primary-button" style={{ marginTop: 0 }} onClick={confirmDateChange}>
@@ -436,13 +518,23 @@ export function AggregatorApp() {
         )}
       </section>
 
+      <ManualEntry
+        lines={manualLines}
+        onLines={setManualLines}
+        status={manualStatus.text}
+        saving={manualSaving}
+        dirty={manualDirty}
+        onSave={() => void handleManualSave()}
+        note={manualNote}
+      />
+
       <p className="round-status" aria-live="polite">
         {savedLoading ? (
           "저장된 집계를 불러오는 중…"
         ) : savedState?.error ? (
           <span className="status-error">저장된 집계를 불러오지 못했습니다. {savedState.error}</span>
         ) : (
-          roundStatus.map((s) => (
+          [...roundStatus, manualStatus].map((s) => (
             <span key={s.round} className={`status-chip ${s.tone}`}>
               {s.text}
             </span>

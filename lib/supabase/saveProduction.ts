@@ -167,6 +167,8 @@ export interface SavedRoundRow {
   sizeLabel: string;
   sizeG: number | null;
   qty: number;
+  /** 수동 입력 줄의 거래처 메모. 엑셀 차수에는 없습니다. */
+  memo?: string;
 }
 
 /** 한 날짜에서 차수별로 가장 최근에 저장된 집계. round 0은 수동 입력 묶음입니다. */
@@ -194,6 +196,7 @@ type RowRecord = {
   round_2: number | string | null;
   round_3: number | string | null;
   qty_total: number | string | null;
+  payload: Record<string, unknown> | null;
 };
 
 function savedRoundQty(row: RowRecord, round: number, jobRounds: number[]): number {
@@ -227,7 +230,7 @@ export async function loadProductionDay(
   const jobIds = [...new Set([...latest.values()].map((job) => job.id))];
   const { data: rows, error: rowError } = await supabase
     .from("production_rows")
-    .select("job_id, category, product, size_label, size_g, round_1, round_2, round_3, qty_total")
+    .select("job_id, category, product, size_label, size_g, round_1, round_2, round_3, qty_total, payload")
     .in("job_id", jobIds)
     .eq("kind", "pack")
     .order("row_no", { ascending: true });
@@ -244,6 +247,9 @@ export async function loadProductionDay(
           sizeLabel: String(row.size_label ?? ""),
           sizeG: row.size_g === null ? null : Number(row.size_g),
           qty: savedRoundQty(row, round, jobRounds),
+          ...(typeof row.payload?.["메모"] === "string" && row.payload["메모"]
+            ? { memo: row.payload["메모"] as string }
+            : {}),
         }))
         .filter((row) => row.qty > 0);
       return {
