@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   combineBatches,
-  detectRound,
   meatGroupSubtotals,
   roundLabel,
 } from "@/lib/aggregator/batches";
@@ -23,13 +22,21 @@ import {
   pngFileName,
   renderSharePng,
 } from "@/lib/aggregator/exportPng";
+import { savedRowsToTotals } from "@/lib/aggregator/savedRounds";
 import { productionRows } from "@/lib/aggregator/summary";
 import {
   buildProductionRows,
+  fetchSavedRounds,
   saveProductionJob,
+  type SavedRound,
 } from "@/lib/supabase/saveProduction";
 import { DataTable } from "./DataTable";
-import { FileDropMulti } from "./FileDropMulti";
+import {
+  FileDropMulti,
+  ROUND_CHOICES,
+  uploadKey,
+  type Upload,
+} from "./FileDropMulti";
 import { ProductionTable, type QtyColumn } from "./ProductionTable";
 
 function todayInputValue(): string {
@@ -59,20 +66,54 @@ type BatchResult = {
   errors: string[];
 };
 
+type SavedState = {
+  date: string;
+  reloadKey: number;
+  rounds: SavedRound[];
+  error: string;
+};
+
+function hhmm(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+}
+
 export function AggregatorApp() {
-  const [files, setFiles] = useState<File[]>([]);
+  const [uploads, setUploads] = useState<Upload[]>([]);
+  const [savedKeys, setSavedKeys] = useState<Set<string>>(new Set());
   const [reportDateStr, setReportDateStr] = useState(todayInputValue);
+  const [pendingDate, setPendingDate] = useState<string | null>(null);
+  const [savedState, setSavedState] = useState<SavedState | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
   const [result, setResult] = useState<BatchResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState(0);
   const [saving, setSaving] = useState(false);
+  const [confirmOverwrite, setConfirmOverwrite] = useState(false);
   const [saveNote, setSaveNote] = useState("");
   const [ackUnmatched, setAckUnmatched] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
+    void fetchSavedRounds(reportDateStr).then((loaded) => {
+      if (cancelled) return;
+      setSavedState({
+        date: reportDateStr,
+        reloadKey,
+        rounds: loaded.ok ? loaded.rounds : [],
+        error: loaded.ok ? "" : loaded.error,
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [reportDateStr, reloadKey]);
+
+  useEffect(() => {
+    let cancelled = false;
     async function run() {
-      if (!files.length) {
+      if (!uploads.length) {
         setResult(null);
         return;
       }
@@ -81,9 +122,7 @@ export function AggregatorApp() {
       const details: Record<number, DetailRow[]> = {};
       const errors: string[] = [];
 
-      for (let index = 0; index < files.length; index++) {
-        const file = files[index];
-        const roundNo = detectRound(file.name, index + 1);
+      for (const { file, round: roundNo } of uploads) {
         try {
           const rows = await readOrdersMatrix(file);
           const { totals, detail } = aggregateOrders(rows);
@@ -107,6 +146,7 @@ export function AggregatorApp() {
         setResult({ batches, details, errors });
         setActiveTab(0);
         setSaveNote("");
+        setConfirmOverwrite(false);
         setAckUnmatched(false);
         setLoading(false);
       }
@@ -115,49 +155,84 @@ export function AggregatorApp() {
     return () => {
       cancelled = true;
     };
-  }, [files]);
+  }, [uploads]);
 
   const reportDate = useMemo(
     () => parseDateInput(reportDateStr),
     [reportDateStr],
   );
 
+  const savedLoading =
+    savedState?.date !== reportDateStr || savedState?.reloadKey !== reloadKey;
+  // 저장 직후 다시 불러오는 동안에도 같은 날짜의 이전 결과는 그대로 보여 줍니다.
+  const savedRounds = useMemo(
+    () =>
+      savedState && savedState.date === reportDateStr
+        ? savedState.rounds.filter((r) => r.round >= 1 && r.round <= 3)
+        : [],
+    [savedState, reportDateStr],
+  );
+
+  const uploadedBatches = useMemo(() => result?.batches ?? {}, [result]);
+  const uploadedRounds = useMemo(
+    () =>
+      Object.keys(uploadedBatches)
+        .map(Number)
+        .sort((a, b) => a - b),
+    [uploadedBatches],
+  );
+
+  /** 저장된 차수 위에 이번에 올린 차수를 덮어 합친 오늘의 누적 집계. */
+  const batches = useMemo(() => {
+    const merged: Record<number, DailyTotals> = {};
+    for (const saved of savedRounds) merged[saved.round] = savedRowsToTotals(saved.rows);
+    return { ...merged, ...uploadedBatches };
+  }, [savedRounds, uploadedBatches]);
+
   const rounds = useMemo(
     () =>
-      result
-        ? Object.keys(result.batches)
-            .map(Number)
-            .sort((a, b) => a - b)
-        : [],
-    [result],
+      Object.keys(batches)
+        .map(Number)
+        .sort((a, b) => a - b),
+    [batches],
+  );
+
+  const unsavedRounds = useMemo(
+    () =>
+      ROUND_CHOICES.filter((r) =>
+        uploads.some((u) => u.round === r && !savedKeys.has(uploadKey(u))),
+      ),
+    [uploads, savedKeys],
   );
 
   const combined = useMemo(
-    () =>
-      result && Object.keys(result.batches).length
-        ? combineBatches(result.batches, { onlyOrdered: true })
-        : [],
-    [result],
+    () => (rounds.length ? combineBatches(batches, { onlyOrdered: true }) : []),
+    [batches, rounds],
   );
 
   const allCombined = useMemo(
-    () =>
-      result && Object.keys(result.batches).length
-        ? combineBatches(result.batches, { onlyOrdered: false })
-        : [],
-    [result],
+    () => (rounds.length ? combineBatches(batches, { onlyOrdered: false }) : []),
+    [batches, rounds],
   );
 
   const unmatched = useMemo(
     () =>
-      result
-        ? rounds.flatMap((roundNo) =>
-            result.batches[roundNo].unmatched.map((text) => ({ roundNo, text })),
-          )
-        : [],
-    [result, rounds],
+      uploadedRounds.flatMap((roundNo) =>
+        uploadedBatches[roundNo].unmatched.map((text) => ({ roundNo, text })),
+      ),
+    [uploadedBatches, uploadedRounds],
   );
   const shareBlocked = unmatched.length > 0 && !ackUnmatched;
+
+  const roundStatus = ROUND_CHOICES.map((r) => {
+    const saved = savedRounds.find((s) => s.round === r);
+    if (unsavedRounds.includes(r)) return { round: r, text: `${r}차 올림(미저장)`, tone: "pending" };
+    if (saved) return { round: r, text: `${r}차 저장됨 ${hhmm(saved.savedAt)}`, tone: "saved" };
+    return { round: r, text: `${r}차 없음`, tone: "none" };
+  });
+  const overwriteTargets = unsavedRounds
+    .map((r) => savedRounds.find((s) => s.round === r))
+    .filter((s): s is SavedRound => Boolean(s));
 
   const roundCols = useMemo(() => rounds.map(roundLabel), [rounds]);
   const pngCols = useMemo(
@@ -203,8 +278,8 @@ export function AggregatorApp() {
   }, [combined, pngCols, groupRows, rounds, reportDate]);
 
   const handleExcelDownload = () => {
-    if (!result || !Object.keys(result.batches).length) return;
-    const bytes = reportBytes(reportDate, result.batches);
+    if (!rounds.length) return;
+    const bytes = reportBytes(reportDate, batches);
     downloadBlob(
       new Blob([bytes], {
         type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -218,45 +293,79 @@ export function AggregatorApp() {
     downloadBlob(dataUrlToBlob(pngPreview), pngFileName(reportDate));
   };
 
-  const handleDbSave = async () => {
-    if (!result || !Object.keys(result.batches).length || saving || shareBlocked) {
+  /** 이번에 올린 차수만, 차수 하나당 저장 1건으로 저장합니다. 이미 저장된 차수는 먼저 확인을 받습니다. */
+  const handleDbSave = async (confirmed = false) => {
+    if (!result || !unsavedRounds.length || saving || shareBlocked) return;
+    if (overwriteTargets.length && !confirmed) {
+      setConfirmOverwrite(true);
       return;
     }
+    setConfirmOverwrite(false);
     setSaving(true);
     setSaveNote("");
-    const unmatchedCount = unmatched.length;
-    const packRows = combined.map((row) => {
-      const next: Record<string, string | number> = {
-        상품: String(row.상품),
-        품목: String(row.품목),
-        용량: String(row.용량),
-        grams: Number(row.grams || 0),
-        합계: Number(row.합계 || 0),
-      };
-      for (const col of roundCols) next[col] = Number(row[col] || 0);
-      return next;
-    });
-    const saved = await saveProductionJob({
-      reportDate,
-      sourceFiles: files.map((f) => f.name),
-      rounds,
-      skuCount,
-      packCount,
-      unmatchedCount,
-      status: result.errors.length ? "partial" : "ok",
-      message: result.errors.length
-        ? result.errors.join(" / ")
-        : `${skuCount}종 · ${packCount}개 저장`,
-      rows: buildProductionRows(packRows, groupRows, rounds),
-    });
-    setSaving(false);
-    if (saved.ok) {
-      setSaveNote(
-        `${reportDate.getMonth() + 1}월 ${reportDate.getDate()}일 ${rounds.join("·")}차 집계를 저장했습니다.`,
-      );
-    } else {
-      setSaveNote(`저장하지 못했습니다. ${saved.error || ""}`.trim());
+
+    const done: number[] = [];
+    let failure = "";
+    for (const roundNo of unsavedRounds) {
+      const totals = uploadedBatches[roundNo];
+      if (!totals) continue;
+      const roundRows = combineBatches({ [roundNo]: totals }, { onlyOrdered: true });
+      const roundGroups = meatGroupSubtotals(roundRows, [roundNo]);
+      const roundPacks = roundRows.reduce((sum, row) => sum + Number(row.합계 || 0), 0);
+      const files = uploads.filter((u) => u.round === roundNo).map((u) => u.file.name);
+      const fileErrors = result.errors.filter((msg) => files.some((f) => msg.startsWith(`${f}:`)));
+      const saved = await saveProductionJob({
+        reportDate,
+        sourceFiles: files,
+        rounds: [roundNo],
+        skuCount: roundRows.length,
+        packCount: roundPacks,
+        unmatchedCount: totals.unmatched.length,
+        status: fileErrors.length ? "partial" : "ok",
+        message: fileErrors.length
+          ? fileErrors.join(" / ")
+          : `${roundNo}차 ${roundRows.length}종 · ${roundPacks}개 저장`,
+        rows: buildProductionRows(roundRows, roundGroups, [roundNo]),
+      });
+      if (!saved.ok) {
+        failure = `${roundNo}차를 저장하지 못했습니다. ${saved.error || ""}`.trim();
+        break;
+      }
+      done.push(roundNo);
     }
+
+    setSaving(false);
+    if (done.length) {
+      setSavedKeys((prev) => {
+        const next = new Set(prev);
+        for (const u of uploads) if (done.includes(u.round)) next.add(uploadKey(u));
+        return next;
+      });
+      setReloadKey((k) => k + 1);
+    }
+    const doneText = done.length
+      ? `${reportDate.getMonth() + 1}월 ${reportDate.getDate()}일 ${done.join("·")}차 집계를 저장했습니다.`
+      : "";
+    setSaveNote([doneText, failure].filter(Boolean).join(" "));
+  };
+
+  const requestDateChange = (value: string) => {
+    if (!value || value === reportDateStr) return;
+    if (unsavedRounds.length) {
+      setPendingDate(value);
+      return;
+    }
+    setUploads([]);
+    setSavedKeys(new Set());
+    setReportDateStr(value);
+  };
+
+  const confirmDateChange = () => {
+    if (!pendingDate) return;
+    setUploads([]);
+    setSavedKeys(new Set());
+    setReportDateStr(pendingDate);
+    setPendingDate(null);
   };
 
   const qtyTableRows = combined.map((row) => ({
@@ -283,8 +392,8 @@ export function AggregatorApp() {
           <div>
             <h2 id="upload-title">발송 엑셀 업로드</h2>
             <p className="hint">
-              당일 01 · 02 · 03 파일을 한 번에 올려 주세요. xls, xlsx 모두
-              가능합니다. (01→1차 · 02→2차 · 03→3차)
+              파일마다 차수를 고르세요. 파일명 끝이 01·02·03이면 자동으로
+              골라집니다. 같은 날짜에 저장한 차수는 자동으로 불러와 합칩니다.
             </p>
           </div>
           <div className="date-field">
@@ -293,17 +402,33 @@ export function AggregatorApp() {
               id="report-date"
               type="date"
               value={reportDateStr}
-              onChange={(e) => setReportDateStr(e.target.value)}
+              onChange={(e) => requestDateChange(e.target.value)}
             />
           </div>
         </div>
-        <FileDropMulti files={files} onFiles={setFiles} />
-        {files.length > 0 && (
+        {pendingDate && (
+          <div className="confirm-box" role="alertdialog" aria-labelledby="date-confirm-title">
+            <p id="date-confirm-title">
+              저장하지 않은 {unsavedRounds.join("·")}차가 있습니다. 날짜를 바꾸면 올린
+              파일이 비워집니다.
+            </p>
+            <div className="actions">
+              <button type="button" className="primary-button" style={{ marginTop: 0 }} onClick={confirmDateChange}>
+                날짜 바꾸기
+              </button>
+              <button type="button" className="ghost-button" onClick={() => setPendingDate(null)}>
+                취소
+              </button>
+            </div>
+          </div>
+        )}
+        <FileDropMulti uploads={uploads} onUploads={setUploads} />
+        {uploads.length > 0 && (
           <div className="actions" style={{ marginTop: 12 }}>
             <button
               type="button"
               className="ghost-button"
-              onClick={() => setFiles([])}
+              onClick={() => setUploads([])}
             >
               선택 초기화
             </button>
@@ -311,7 +436,21 @@ export function AggregatorApp() {
         )}
       </section>
 
-      {!files.length && (
+      <p className="round-status" aria-live="polite">
+        {savedLoading ? (
+          "저장된 집계를 불러오는 중…"
+        ) : savedState?.error ? (
+          <span className="status-error">저장된 집계를 불러오지 못했습니다. {savedState.error}</span>
+        ) : (
+          roundStatus.map((s) => (
+            <span key={s.round} className={`status-chip ${s.tone}`}>
+              {s.text}
+            </span>
+          ))
+        )}
+      </p>
+
+      {!uploads.length && !rounds.length && (
         <div className="guide-grid">
           <div className="guide-card">
             <div className="guide-num">1</div>
@@ -321,7 +460,7 @@ export function AggregatorApp() {
           <div className="guide-card">
             <div className="guide-num">2</div>
             <h3>발송 엑셀 업로드</h3>
-            <p>파일명 끝 01·02·03이 1차·2차·3차로 자동 구분됩니다.</p>
+            <p>파일마다 1차·2차·3차를 고릅니다. 저장한 차수는 날짜별로 쌓입니다.</p>
           </div>
           <div className="guide-card">
             <div className="guide-num">3</div>
@@ -369,7 +508,7 @@ export function AggregatorApp() {
         </section>
       )}
 
-      {result && Object.keys(result.batches).length > 0 && (
+      {rounds.length > 0 && (
         <>
           <section className="sheet-section" aria-labelledby="today-title">
             <div className="sheet-head">
@@ -431,11 +570,50 @@ export function AggregatorApp() {
                 type="button"
                 className="ghost-button"
                 onClick={() => void handleDbSave()}
-                disabled={saving || shareBlocked}
+                disabled={saving || shareBlocked || !unsavedRounds.length}
               >
-                {saving ? "저장 중…" : "오늘 집계 DB 저장"}
+                {saving
+                  ? "저장 중…"
+                  : unsavedRounds.length
+                    ? `${unsavedRounds.join("·")}차 DB 저장`
+                    : "저장할 차수 없음"}
               </button>
             </div>
+            {confirmOverwrite && overwriteTargets.length > 0 && (
+              <div className="confirm-box" role="alertdialog" aria-labelledby="overwrite-title">
+                <p id="overwrite-title">이미 저장된 차수가 있습니다. 새 결과로 바꿀까요?</p>
+                <ul>
+                  {overwriteTargets.map((t) => {
+                    const totals = uploadedBatches[t.round];
+                    const next = totals
+                      ? combineBatches({ [t.round]: totals }, { onlyOrdered: true }).reduce(
+                          (sum, row) => sum + Number(row.합계 || 0),
+                          0,
+                        )
+                      : 0;
+                    return (
+                      <li key={t.round}>
+                        {t.round}차: {hhmm(t.savedAt)}에 저장된 합계 {t.packCount}개 → 새 합계 {next}개
+                      </li>
+                    );
+                  })}
+                </ul>
+                <p className="caption">이전 기록은 지워지지 않고 이력으로 남습니다.</p>
+                <div className="actions">
+                  <button
+                    type="button"
+                    className="primary-button"
+                    style={{ marginTop: 0 }}
+                    onClick={() => void handleDbSave(true)}
+                  >
+                    바꿔서 저장
+                  </button>
+                  <button type="button" className="ghost-button" onClick={() => setConfirmOverwrite(false)}>
+                    취소
+                  </button>
+                </div>
+              </div>
+            )}
             <p className="caption" aria-live="polite" style={{ marginTop: 8 }}>
               {shareBlocked
                 ? "인식하지 못한 주문을 먼저 확인해 주세요."
@@ -458,7 +636,7 @@ export function AggregatorApp() {
             </h2>
 
             <div className="tabs" role="tablist" aria-label="차수 상세">
-              {rounds.map((roundNo, idx) => (
+              {uploadedRounds.map((roundNo, idx) => (
                 <button
                   key={roundNo}
                   type="button"
@@ -473,18 +651,18 @@ export function AggregatorApp() {
               <button
                 type="button"
                 role="tab"
-                aria-selected={activeTab === rounds.length}
-                className={activeTab === rounds.length ? "is-active" : undefined}
-                onClick={() => setActiveTab(rounds.length)}
+                aria-selected={activeTab === uploadedRounds.length}
+                className={activeTab === uploadedRounds.length ? "is-active" : undefined}
+                onClick={() => setActiveTab(uploadedRounds.length)}
               >
                 전체 용량표
               </button>
             </div>
 
-            {activeTab < rounds.length &&
+            {result && activeTab < uploadedRounds.length &&
               (() => {
-                const roundNo = rounds[activeTab];
-                const totals = result.batches[roundNo];
+                const roundNo = uploadedRounds[activeTab];
+                const totals = uploadedBatches[roundNo];
                 const rows = productionRows(totals, { onlyOrdered: true }).map(
                   (r) => ({
                     품목: r.품목,
@@ -535,7 +713,7 @@ export function AggregatorApp() {
                 );
               })()}
 
-            {activeTab === rounds.length && (
+            {activeTab >= uploadedRounds.length && (
               <div className="workspace" role="tabpanel">
                 <ProductionTable
                   caption="전체 용량표"
