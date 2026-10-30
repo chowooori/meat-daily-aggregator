@@ -30,7 +30,7 @@ export function buildReportWorkbook(
   const aoa: (string | number)[][] = [];
   aoa.push(["당일 주문 용량별 제조 수량 (차수별)"]);
   aoa.push([
-    `${reportDate.getFullYear()}년 ${reportDate.getMonth() + 1}월 ${reportDate.getDate()}일  /  ${rounds.map(roundLabel).join(", ")}  /  파일명 01·02·03 = 1차·2차·3차`,
+    `${reportDate.getFullYear()}년 ${reportDate.getMonth() + 1}월 ${reportDate.getDate()}일  /  ${rounds.map(roundLabel).join(", ")}  /  차수는 업로드 화면에서 선택`,
   ]);
   aoa.push([]);
   aoa.push(headers);

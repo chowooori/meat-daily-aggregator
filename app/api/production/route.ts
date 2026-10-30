@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import {
   insertProductionJob,
+  loadProductionDay,
   type ProductionRowRecord,
   type SaveProductionInput,
 } from "@/lib/supabase/saveProduction";
@@ -53,4 +54,24 @@ export async function POST(request: Request) {
   }
   const saved = await insertProductionJob(supabase, input);
   return NextResponse.json(saved, { status: saved.ok ? 200 : 500 });
+}
+
+export async function GET(request: Request) {
+  const date = new URL(request.url).searchParams.get("date") ?? "";
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+    return NextResponse.json(
+      { ok: false, error: "날짜는 YYYY-MM-DD 형식이어야 합니다." },
+      { status: 400 },
+    );
+  }
+
+  const supabase = getSupabaseServerClient();
+  if (!supabase) {
+    return NextResponse.json(
+      { ok: false, error: `서버 환경변수가 없습니다: ${missingSupabaseEnv().join(", ")}` },
+      { status: 500 },
+    );
+  }
+  const loaded = await loadProductionDay(supabase, date);
+  return NextResponse.json(loaded, { status: loaded.ok ? 200 : 500 });
 }
