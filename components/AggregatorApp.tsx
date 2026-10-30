@@ -38,6 +38,7 @@ import {
   type Upload,
 } from "./FileDropMulti";
 import { ProductionTable, type QtyColumn } from "./ProductionTable";
+import { ManualEntryPrototype } from "./prototype/ManualEntryPrototype";
 
 function todayInputValue(): string {
   const d = new Date();
@@ -435,6 +436,9 @@ export function AggregatorApp() {
           </div>
         )}
       </section>
+
+      {/* PROTOTYPE: 수동 입력 시안. 이 브랜치에만 있고 main에 합치지 않습니다. */}
+      <ManualEntryPrototype />
 
       <p className="round-status" aria-live="polite">
         {savedLoading ? (
