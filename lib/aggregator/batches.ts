@@ -76,6 +76,13 @@ export function combineBatches(
   return combined;
 }
 
+/** 중량 합계에서 묶는 품목. 육사시미 덩어리는 육사시미로 센다. */
+const KG_GROUP: Record<string, "육사시미" | "육회"> = {
+  육사시미: "육사시미",
+  "육사시미 덩어리": "육사시미",
+  육회: "육회",
+};
+
 export function meatGroupSubtotals(
   rows: CombinedRow[],
   rounds: number[],
@@ -87,7 +94,7 @@ export function meatGroupSubtotals(
       roundCols.map((col) => [col, 0]),
     );
     for (const row of rows) {
-      if (row.품목 !== name) continue;
+      if (KG_GROUP[String(row.품목)] !== name) continue;
       const grams = Number(row.grams || 0);
       for (const col of roundCols) {
         const qty = Number(row[col] || 0);

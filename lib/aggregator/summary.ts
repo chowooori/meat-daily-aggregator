@@ -55,6 +55,7 @@ export function productionRows(
   for (const grams of YUKASHIMI_SIZES) {
     add("육사시미", formatSize(grams), totals.yukashimi[grams] || 0, grams);
   }
+  add("육사시미 덩어리", "1kg", totals.sashimiBlockKg, 1000);
   for (const grams of YUKHOE_SIZES) {
     add("육회", formatSize(grams), totals.yukhoe[grams] || 0, grams);
   }

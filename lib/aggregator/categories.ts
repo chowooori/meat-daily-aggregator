@@ -26,7 +26,7 @@ export const EXCLUDE_KEYWORDS = [
   "참깨",
 ] as const;
 
-export const YUKASHIMI_SIZES = [200, 250, 300, 400, 500, 600] as const;
+export const YUKASHIMI_SIZES = [200, 250, 300, 400, 500, 600, 1000, 2000] as const;
 export const YUKHOE_SIZES = [200, 230, 300, 400, 600, 1000] as const;
 
 export type ProductMode = "pack_g" | "unit_g";
@@ -45,6 +45,13 @@ export const PRODUCTS: readonly ProductSpec[] = [
     aliases: ["육사시미", "육 사시미"],
     mode: "pack_g",
     packSizes: YUKASHIMI_SIZES,
+    unitG: 1000,
+  },
+  {
+    canonical: "육사시미 덩어리",
+    aliases: ["육사시미 덩어리", "덩어리 육사시미"],
+    mode: "unit_g",
+    packSizes: [],
     unitG: 1000,
   },
   {
@@ -70,7 +77,7 @@ export const PRODUCTS: readonly ProductSpec[] = [
   },
   {
     canonical: "소고기 잡육",
-    aliases: ["소고기 잡육", "소고기잡육"],
+    aliases: ["소고기 잡육", "소고기잡육", "잡육"],
     mode: "unit_g",
     packSizes: [],
     unitG: 1000,
@@ -144,6 +151,7 @@ export class DailyTotals {
   handonJapuk500g = 0;
   bulgogi500g = 0;
   sujiKg = 0;
+  sashimiBlockKg = 0;
   extraPacks: ExtraPack[] = [];
   skipped: string[] = [];
   unmatched: string[] = [];
@@ -169,6 +177,7 @@ export class DailyTotals {
       "한돈 잡육": "handonJapuk500g",
       소불고기: "bulgogi500g",
       스지: "sujiKg",
+      "육사시미 덩어리": "sashimiBlockKg",
     };
     const attr = mapping[name];
     if (attr) {
@@ -194,6 +203,7 @@ export class DailyTotals {
     this.handonJapuk500g += other.handonJapuk500g;
     this.bulgogi500g += other.bulgogi500g;
     this.sujiKg += other.sujiKg;
+    this.sashimiBlockKg += other.sashimiBlockKg;
     this.extraPacks.push(...other.extraPacks);
     this.skipped.push(...other.skipped);
     this.unmatched.push(...other.unmatched);
