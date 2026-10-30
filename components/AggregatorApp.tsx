@@ -491,8 +491,8 @@ export function AggregatorApp() {
         {pendingDate && (
           <div className="confirm-box" role="alertdialog" aria-labelledby="date-confirm-title">
             <p id="date-confirm-title">
-              저장하지 않은 {unsavedLabels.join("·")}이(가) 있습니다. 날짜를 바꾸면 올린
-              파일과 고치던 수동 입력이 비워집니다.
+              아직 저장하지 않은 것이 있습니다({unsavedLabels.join(", ")}). 날짜를 바꾸면
+              올린 파일과 고치던 수동 입력이 비워집니다.
             </p>
             <div className="actions">
               <button type="button" className="primary-button" style={{ marginTop: 0 }} onClick={confirmDateChange}>
