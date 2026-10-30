@@ -65,8 +65,8 @@ export function buildReportWorkbook(
 
   if (manualLines.length) {
     aoa.push([]);
-    aoa.push(["수동 입력 내역"]);
-    aoa.push(["품목", "용량", "수량", "메모(거래처)"]);
+    aoa.push(["식당 주문 내역"]);
+    aoa.push(["품목", "용량", "수량", "식당"]);
     for (const line of manualLines) {
       aoa.push([line.product, line.size, line.qty, line.memo]);
     }

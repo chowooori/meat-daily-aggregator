@@ -1,6 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { describe, expect, it } from "vitest";
-import { loadProductionDay } from "@/lib/supabase/saveProduction";
+import { loadProductionDay, loadRestaurantNames } from "@/lib/supabase/saveProduction";
 
 type Table = Record<string, unknown>[];
 
@@ -13,6 +13,12 @@ function fakeClient(tables: Record<string, Table>): SupabaseClient {
         select: () => query,
         eq(col: string, value: unknown) {
           rows = rows.filter((r) => r[col] === value);
+          return query;
+        },
+        contains(col: string, values: unknown[]) {
+          rows = rows.filter((r) =>
+            values.every((v) => (r[col] as unknown[] | undefined)?.includes(v)),
+          );
           return query;
         },
         in(col: string, values: unknown[]) {
@@ -93,5 +99,27 @@ describe("loadProductionDay", () => {
       [1, 3],
       [2, 5],
     ]);
+  });
+
+  it("lists restaurant names from saved restaurant orders, most used first", async () => {
+    const client = fakeClient({
+      production_jobs: [
+        { id: 20, status: "ok", rounds: [0] },
+        { id: 21, status: "ok", rounds: [0] },
+        { id: 22, status: "saving", rounds: [0] },
+        { id: 23, status: "ok", rounds: [1] },
+      ],
+      production_rows: [
+        { job_id: 20, payload: { 메모: "캥맥" } },
+        { job_id: 20, payload: { 메모: "베테랑삼겹" } },
+        { job_id: 21, payload: { 메모: "베테랑삼겹" } },
+        { job_id: 21, payload: { 메모: null } },
+        { job_id: 22, payload: { 메모: "저장 중 실패" } },
+        { job_id: 23, payload: { 메모: "엑셀 차수" } },
+      ],
+    });
+
+    const loaded = await loadRestaurantNames(client);
+    expect(loaded).toEqual({ ok: true, names: ["베테랑삼겹", "캥맥"] });
   });
 });

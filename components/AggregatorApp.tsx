@@ -34,6 +34,7 @@ import { savedRowsToTotals } from "@/lib/aggregator/savedRounds";
 import { productionRows } from "@/lib/aggregator/summary";
 import {
   buildProductionRows,
+  fetchRestaurantNames,
   fetchSavedRounds,
   saveProductionJob,
   type SavedRound,
@@ -116,7 +117,18 @@ export function AggregatorApp() {
   const [manualLines, setManualLines] = useState<ManualLine[]>([]);
   const [manualSaving, setManualSaving] = useState(false);
   const [manualNote, setManualNote] = useState("");
+  const [savedRestaurants, setSavedRestaurants] = useState<string[]>([]);
   const manualKeepRef = useRef<{ date: string; dirty: boolean }>({ date: "", dirty: false });
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetchRestaurantNames().then((names) => {
+      if (!cancelled) setSavedRestaurants(names);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [reloadKey]);
 
   useEffect(() => {
     let cancelled = false;
@@ -129,7 +141,7 @@ export function AggregatorApp() {
         rounds,
         error: loaded.ok ? "" : loaded.error,
       });
-      // 같은 날짜에서 고치던 수동 입력이 있으면 덮어쓰지 않습니다.
+      // 같은 날짜에서 고치던 식당 주문이 있으면 덮어쓰지 않습니다.
       const keep = manualKeepRef.current;
       if (!(keep.date === reportDateStr && keep.dirty)) {
         setManualLines(savedManualLines(rounds));
@@ -224,11 +236,19 @@ export function AggregatorApp() {
     : undefined;
   const manualDirty = manualSignature(manualLines) !== manualSignature(savedManual);
 
+  const restaurantNames = useMemo(() => {
+    const names = [...savedRestaurants];
+    for (const line of manualLines) {
+      if (line.memo && !names.includes(line.memo)) names.push(line.memo);
+    }
+    return names;
+  }, [savedRestaurants, manualLines]);
+
   useEffect(() => {
     manualKeepRef.current = { date: reportDateStr, dirty: manualDirty };
   }, [reportDateStr, manualDirty]);
 
-  /** 저장된 차수 위에 이번에 올린 차수를 덮어 합치고, 화면의 수동 입력을 "수동" 열로 더한 오늘의 누적 집계. */
+  /** 저장된 차수 위에 이번에 올린 차수를 덮어 합치고, 화면의 식당 주문을 "식당" 열로 더한 오늘의 누적 집계. */
   const batches = useMemo(() => {
     const merged: Record<number, DailyTotals> = {};
     for (const saved of savedRounds) merged[saved.round] = savedRowsToTotals(saved.rows);
@@ -272,13 +292,13 @@ export function AggregatorApp() {
     return { round: r, text: `${r}차 없음`, tone: "none" };
   });
   const manualStatus = manualDirty
-    ? { round: MANUAL_ROUND, text: "수동 수정됨(미저장)", tone: "pending" }
+    ? { round: MANUAL_ROUND, text: "식당 수정됨(미저장)", tone: "pending" }
     : savedManualRound && savedManual.length
-      ? { round: MANUAL_ROUND, text: `수동 저장됨 ${hhmm(savedManualRound.savedAt)}`, tone: "saved" }
-      : { round: MANUAL_ROUND, text: "수동 없음", tone: "none" };
+      ? { round: MANUAL_ROUND, text: `식당 저장됨 ${hhmm(savedManualRound.savedAt)}`, tone: "saved" }
+      : { round: MANUAL_ROUND, text: "식당 없음", tone: "none" };
   const unsavedLabels = [
     ...unsavedRounds.map((r) => `${r}차`),
-    ...(manualDirty ? ["수동 입력"] : []),
+    ...(manualDirty ? ["식당 주문"] : []),
   ];
   const overwriteTargets = unsavedRounds
     .map((r) => savedRounds.find((s) => s.round === r))
@@ -296,8 +316,8 @@ export function AggregatorApp() {
 
   const qtyColumns: QtyColumn[] = useMemo(
     () => [
-      ...roundCols.map((col) => ({ key: col, label: col, unit: "개" })),
-      { key: "합계", label: "합계", unit: "개", emphasize: "total" as const },
+      ...roundCols.map((col) => ({ key: col, label: col })),
+      { key: "합계", label: "합계", emphasize: "total" as const },
     ],
     [roundCols],
   );
@@ -412,7 +432,7 @@ export function AggregatorApp() {
     setReportDateStr(value);
   };
 
-  /** 그날의 수동 입력 전체를 한 묶음(차수 0)으로 저장합니다. 다시 저장하면 최신본이 됩니다. */
+  /** 그날의 식당 주문 전체를 한 묶음(차수 0)으로 저장합니다. 다시 저장하면 최신본이 됩니다. */
   const handleManualSave = async () => {
     if (manualSaving || !manualDirty) return;
     setManualSaving(true);
@@ -426,13 +446,13 @@ export function AggregatorApp() {
       packCount,
       unmatchedCount: 0,
       status: "ok",
-      message: `수동 ${manualLines.length}줄 · ${packCount}개 저장`,
+      message: `식당 ${manualLines.length}줄 · ${packCount}개 저장`,
       rows: buildManualRows(manualLines),
     });
     setManualSaving(false);
     if (saved.ok) {
       manualKeepRef.current = { date: reportDateStr, dirty: false };
-      setManualNote(`${reportDate.getMonth() + 1}월 ${reportDate.getDate()}일 수동 입력을 저장했습니다.`);
+      setManualNote(`${reportDate.getMonth() + 1}월 ${reportDate.getDate()}일 식당 주문을 저장했습니다.`);
       setReloadKey((k) => k + 1);
     } else {
       setManualNote(`저장하지 못했습니다. ${saved.error || ""}`.trim());
@@ -492,7 +512,7 @@ export function AggregatorApp() {
           <div className="confirm-box" role="alertdialog" aria-labelledby="date-confirm-title">
             <p id="date-confirm-title">
               아직 저장하지 않은 것이 있습니다({unsavedLabels.join(", ")}). 날짜를 바꾸면
-              올린 파일과 고치던 수동 입력이 비워집니다.
+              올린 파일과 고치던 식당 주문이 비워집니다.
             </p>
             <div className="actions">
               <button type="button" className="primary-button" style={{ marginTop: 0 }} onClick={confirmDateChange}>
@@ -526,6 +546,7 @@ export function AggregatorApp() {
         dirty={manualDirty}
         onSave={() => void handleManualSave()}
         note={manualNote}
+        restaurants={restaurantNames}
       />
 
       <p className="round-status" aria-live="polite">
@@ -774,7 +795,6 @@ export function AggregatorApp() {
                         {
                           key: "합계",
                           label: "총 개수",
-                          unit: "개",
                           emphasize: "total",
                         },
                       ]}

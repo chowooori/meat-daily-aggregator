@@ -167,11 +167,11 @@ export interface SavedRoundRow {
   sizeLabel: string;
   sizeG: number | null;
   qty: number;
-  /** 수동 입력 줄의 거래처 메모. 엑셀 차수에는 없습니다. */
+  /** 식당 주문 줄의 식당 이름. 엑셀 차수에는 없습니다. */
   memo?: string;
 }
 
-/** 한 날짜에서 차수별로 가장 최근에 저장된 집계. round 0은 수동 입력 묶음입니다. */
+/** 한 날짜에서 차수별로 가장 최근에 저장된 집계. round 0은 식당 주문 묶음입니다. */
 export interface SavedRound {
   round: number;
   jobId: number;
@@ -296,4 +296,45 @@ export async function saveProductionJob(
     return { ok: false, error: body.error || "저장에 실패했습니다." };
   }
   return body;
+}
+
+/** 지금까지 저장한 식당 주문(차수 0)에 나온 식당 이름. 자주 쓴 이름이 먼저 옵니다. */
+export async function loadRestaurantNames(
+  supabase: SupabaseClient,
+): Promise<{ ok: true; names: string[] } | { ok: false; error: string }> {
+  const { data: jobs, error: jobError } = await supabase
+    .from("production_jobs")
+    .select("id")
+    .contains("rounds", [0])
+    .in("status", ["ok", "partial"]);
+  if (jobError) return { ok: false, error: jobError.message };
+  const jobIds = ((jobs ?? []) as { id: number }[]).map((job) => job.id);
+  if (!jobIds.length) return { ok: true, names: [] };
+
+  const { data: rows, error: rowError } = await supabase
+    .from("production_rows")
+    .select("payload")
+    .in("job_id", jobIds);
+  if (rowError) return { ok: false, error: rowError.message };
+
+  const counts = new Map<string, number>();
+  for (const row of (rows ?? []) as { payload: Record<string, unknown> | null }[]) {
+    const name = row.payload?.["메모"];
+    if (typeof name !== "string" || !name.trim()) continue;
+    counts.set(name.trim(), (counts.get(name.trim()) ?? 0) + 1);
+  }
+  const names = [...counts.entries()]
+    .sort(([a, ca], [b, cb]) => cb - ca || a.localeCompare(b, "ko"))
+    .map(([name]) => name);
+  return { ok: true, names };
+}
+
+export async function fetchRestaurantNames(): Promise<string[]> {
+  try {
+    const response = await fetch("/api/restaurants");
+    const body = await response.json();
+    return response.ok && body.ok ? (body.names as string[]) : [];
+  } catch {
+    return [];
+  }
 }
