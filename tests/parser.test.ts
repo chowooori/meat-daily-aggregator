@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { combineBatches, meatGroupSubtotals } from "@/lib/aggregator/batches";
 import { DailyTotals } from "@/lib/aggregator/categories";
 import { accumulate, parseOptionText } from "@/lib/aggregator/parser";
 
@@ -85,5 +86,41 @@ describe("parser", () => {
     expect(totals.yukashimi[250]).toBe(2);
     expect(totals.sujiKg).toBe(2);
     expect(totals.bulgogi500g).toBe(3);
+  });
+
+  it("keeps yukashimi 1kg and 2kg as their own sizes", () => {
+    expect(qty(parseOptionText("육사시미 1kg", 1), "육사시미", 1000)).toBe(1);
+    expect(qty(parseOptionText("육사시미 2kg", 3), "육사시미", 2000)).toBe(3);
+    expect(qty(parseOptionText("육사시미 2kg", 1), "육사시미", 500)).toBe(0);
+  });
+
+  it("reads sashimi block as its own product in 1kg units", () => {
+    const lines = parseOptionText("육사시미 덩어리 3kg", 2);
+    expect(qty(lines, "육사시미 덩어리")).toBe(6);
+    expect(qty(lines, "육사시미")).toBe(0);
+    const totals = new DailyTotals();
+    accumulate(lines, totals);
+    expect(totals.sashimiBlockKg).toBe(6);
+  });
+
+  it("treats bare japuk as beef japuk without touching handon", () => {
+    expect(qty(parseOptionText("잡육 1kg", 2), "소고기 잡육")).toBe(2);
+    expect(qty(parseOptionText("한돈 잡육 500g", 1), "한돈 잡육")).toBe(1);
+  });
+
+  it("counts sashimi block into the yukashimi kg total", () => {
+    const totals = new DailyTotals();
+    accumulate(
+      [
+        ...parseOptionText("육사시미 500g", 2),
+        ...parseOptionText("육사시미 2kg", 1),
+        ...parseOptionText("육사시미 덩어리 1kg", 3),
+      ],
+      totals,
+    );
+    const rows = combineBatches({ 1: totals });
+    expect(rows.find((r) => r.상품 === "육사시미 덩어리 1kg")?.합계).toBe(3);
+    const kg = meatGroupSubtotals(rows, [1]);
+    expect(kg.find((r) => r.품목 === "육사시미")?.합계).toBe(6);
   });
 });
