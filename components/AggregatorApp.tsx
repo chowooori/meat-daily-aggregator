@@ -68,6 +68,7 @@ type BatchResult = {
 
 type SavedState = {
   date: string;
+  reloadKey: number;
   rounds: SavedRound[];
   error: string;
 };
@@ -99,6 +100,7 @@ export function AggregatorApp() {
       if (cancelled) return;
       setSavedState({
         date: reportDateStr,
+        reloadKey,
         rounds: loaded.ok ? loaded.rounds : [],
         error: loaded.ok ? "" : loaded.error,
       });
@@ -160,13 +162,15 @@ export function AggregatorApp() {
     [reportDateStr],
   );
 
-  const savedLoading = savedState?.date !== reportDateStr;
+  const savedLoading =
+    savedState?.date !== reportDateStr || savedState?.reloadKey !== reloadKey;
+  // 저장 직후 다시 불러오는 동안에도 같은 날짜의 이전 결과는 그대로 보여 줍니다.
   const savedRounds = useMemo(
     () =>
-      !savedLoading && savedState
+      savedState && savedState.date === reportDateStr
         ? savedState.rounds.filter((r) => r.round >= 1 && r.round <= 3)
         : [],
-    [savedLoading, savedState],
+    [savedState, reportDateStr],
   );
 
   const uploadedBatches = useMemo(() => result?.batches ?? {}, [result]);
