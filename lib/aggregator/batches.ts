@@ -13,14 +13,14 @@ export function detectRound(filename: string, fallback?: number): number {
   return 1;
 }
 
-/** 수동 입력은 차수 0으로 저장하고, 화면에는 "수동"으로 보여 줍니다. */
+/** 식당 주문(화면에서 직접 넣는 주문)은 차수 0으로 저장하고, 화면에는 "식당"으로 보여 줍니다. */
 export const MANUAL_ROUND = 0;
 
 export function roundLabel(roundNo: number): string {
-  return roundNo === MANUAL_ROUND ? "수동" : `${roundNo}차`;
+  return roundNo === MANUAL_ROUND ? "식당" : `${roundNo}차`;
 }
 
-/** 1차·2차·3차 다음에 수동이 오도록 정렬합니다. */
+/** 1차·2차·3차 다음에 식당이 오도록 정렬합니다. */
 export function sortRounds(rounds: number[]): number[] {
   const rank = (r: number) => (r === MANUAL_ROUND ? Number.MAX_SAFE_INTEGER : r);
   return [...rounds].sort((a, b) => rank(a) - rank(b));

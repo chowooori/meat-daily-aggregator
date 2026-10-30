@@ -1,11 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { MANUAL_CATALOG, sizesOf, type ManualLine } from "@/lib/aggregator/manual";
 
 const FIRST = MANUAL_CATALOG.find((c) => c.product === "육회") ?? MANUAL_CATALOG[0];
 
-/** 수동 입력 카드: 위에 입력 한 줄, 아래에 넣은 줄 목록. 줄을 누르면 입력 줄로 올라와 고칠 수 있습니다. */
+/** 식당 주문 카드: 위에 입력 한 줄, 아래에 넣은 줄 목록. 줄을 누르면 입력 줄로 올라와 고칠 수 있습니다. 식당 이름은 저장된 이름에서 고르거나 새로 씁니다. */
 export function ManualEntry({
   lines,
   onLines,
@@ -14,6 +14,7 @@ export function ManualEntry({
   dirty,
   onSave,
   note,
+  restaurants,
 }: {
   lines: ManualLine[];
   onLines: (lines: ManualLine[]) => void;
@@ -22,7 +23,9 @@ export function ManualEntry({
   dirty: boolean;
   onSave: () => void;
   note: string;
+  restaurants: string[];
 }) {
+  const restaurantListId = useId();
   const [product, setProduct] = useState(FIRST.product);
   const [size, setSize] = useState(FIRST.sizes.at(-1) ?? FIRST.sizes[0]);
   const [qty, setQty] = useState("1");
@@ -60,9 +63,9 @@ export function ManualEntry({
     <section className="card" aria-labelledby="manual-title">
       <div className="card-head" style={{ alignItems: "baseline" }}>
         <div>
-          <h2 id="manual-title">수동 입력</h2>
+          <h2 id="manual-title">식당 주문</h2>
           <p className="hint">
-            식당 등 엑셀에 없는 주문을 넣습니다. 결과표에서 &quot;수동&quot; 열로 보입니다.
+            엑셀에 없는 식당 주문을 넣습니다. 결과표에서 &quot;식당&quot; 열로 보입니다.
           </p>
         </div>
         <span className="caption">{status}</span>
@@ -112,12 +115,19 @@ export function ManualEntry({
           />
         </label>
         <label className="manual-memo">
-          <span className="sr-only">메모(거래처)</span>
+          <span className="sr-only">식당 이름</span>
           <input
             value={memo}
-            placeholder="메모(거래처)"
+            placeholder="식당 이름 (목록에서 고르거나 새로 입력)"
+            list={restaurantListId}
+            autoComplete="off"
             onChange={(event) => setMemo(event.target.value)}
           />
+          <datalist id={restaurantListId}>
+            {restaurants.map((name) => (
+              <option key={name} value={name} />
+            ))}
+          </datalist>
         </label>
         <button type="submit" className="primary-button" style={{ marginTop: 0 }} disabled={!qtyValid}>
           {editingId ? "고치기" : "추가"}
@@ -129,12 +139,12 @@ export function ManualEntry({
         )}
       </form>
       <p className="hint" style={{ margin: "8px 0 12px" }}>
-        Enter로도 추가됩니다. 메모는 다음 줄에도 남습니다. 목록의 줄을 누르면 위로 올라와 고칠 수
-        있습니다.
+        Enter로도 추가됩니다. 식당 이름은 다음 줄에도 남습니다. 처음 쓰는 식당은 저장하면 다음부터
+        목록에 나옵니다. 아래 줄을 누르면 위로 올라와 고칠 수 있습니다.
       </p>
 
       {lines.length ? (
-        <ul className="upload-list" aria-label="넣은 수동 주문">
+        <ul className="upload-list" aria-label="넣은 식당 주문">
           {lines.map((l) => (
             <li key={l.id} className={l.id === editingId ? "is-editing" : undefined}>
               <button
@@ -163,7 +173,7 @@ export function ManualEntry({
           ))}
         </ul>
       ) : (
-        <p className="file-name">넣은 수동 주문이 없습니다.</p>
+        <p className="file-name">넣은 식당 주문이 없습니다.</p>
       )}
 
       <div className="actions" style={{ marginTop: 12, alignItems: "center" }}>
@@ -173,7 +183,7 @@ export function ManualEntry({
           onClick={onSave}
           disabled={saving || !dirty}
         >
-          {saving ? "저장 중…" : dirty ? "수동 입력 저장" : "저장됨"}
+          {saving ? "저장 중…" : dirty ? "식당 주문 저장" : "저장됨"}
         </button>
         <span className="caption" aria-live="polite">
           {note}

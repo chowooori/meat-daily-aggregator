@@ -25,7 +25,7 @@ const line = (product: string, size: string, qty: number, memo = ""): ManualLine
 
 describe("manual entry", () => {
   it("labels the manual round and puts it after the numbered rounds", () => {
-    expect(roundLabel(MANUAL_ROUND)).toBe("수동");
+    expect(roundLabel(MANUAL_ROUND)).toBe("식당");
     expect(sortRounds([0, 2, 1])).toEqual([1, 2, 0]);
   });
 
@@ -48,15 +48,15 @@ describe("manual entry", () => {
     const rows = combineBatches({ [MANUAL_ROUND]: manual, 1: round1 });
     const yukhoe = rows.find((r) => r.상품 === "육회 1kg");
     expect(yukhoe?.["1차"]).toBe(3);
-    expect(yukhoe?.["수동"]).toBe(2);
+    expect(yukhoe?.["식당"]).toBe(2);
     expect(yukhoe?.합계).toBe(5);
     expect(Object.keys(yukhoe ?? {}).indexOf("1차")).toBeLessThan(
-      Object.keys(yukhoe ?? {}).indexOf("수동"),
+      Object.keys(yukhoe ?? {}).indexOf("식당"),
     );
-    expect(rows.find((r) => r.상품 === "소불고기 500g")?.["수동"]).toBe(4);
+    expect(rows.find((r) => r.상품 === "소불고기 500g")?.["식당"]).toBe(4);
 
     const kg = meatGroupSubtotals(rows, [1, MANUAL_ROUND]);
-    expect(kg.find((r) => r.품목 === "육사시미")?.["수동"]).toBe(5);
+    expect(kg.find((r) => r.품목 === "육사시미")?.["식당"]).toBe(5);
   });
 
   it("saves one row per manual line with the memo in the payload", () => {
