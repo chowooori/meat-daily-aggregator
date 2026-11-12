@@ -5,8 +5,47 @@ import { MANUAL_CATALOG, sizesOf, type ManualLine } from "@/lib/aggregator/manua
 
 const FIRST = MANUAL_CATALOG.find((c) => c.product === "육회") ?? MANUAL_CATALOG[0];
 
-/** 식당 주문 카드: 위에 입력 한 줄, 아래에 넣은 줄 목록. 줄을 누르면 입력 줄로 올라와 고칠 수 있습니다. 식당 이름은 저장된 이름에서 고르거나 새로 씁니다. */
+/** 화면에서 넣는 줄 묶음의 문구. 식당 주문과 환불이 같은 입력 방식을 씁니다. */
+export type LineBundleCopy = {
+  id: string;
+  title: string;
+  hint: string;
+  memoLabel: string;
+  memoPlaceholder: string;
+  listLabel: string;
+  emptyText: string;
+  saveLabel: string;
+  helpText: string;
+};
+
+export const RESTAURANT_COPY: LineBundleCopy = {
+  id: "manual",
+  title: "식당 주문",
+  hint: "엑셀에 없는 식당 주문을 넣습니다. 결과표에서 \"식당\" 열로 보입니다.",
+  memoLabel: "식당 이름",
+  memoPlaceholder: "식당 이름 (목록에서 고르거나 새로 입력)",
+  listLabel: "넣은 식당 주문",
+  emptyText: "넣은 식당 주문이 없습니다.",
+  saveLabel: "식당 주문 저장",
+  helpText:
+    "Enter로도 추가됩니다. 식당 이름은 다음 줄에도 남습니다. 처음 쓰는 식당은 저장하면 다음부터 목록에 나옵니다. 아래 줄을 누르면 위로 올라와 고칠 수 있습니다.",
+};
+
+export const REFUND_COPY: LineBundleCopy = {
+  id: "refund",
+  title: "환불",
+  hint: "만들기 전에 취소된 수량을 넣습니다. 결과표의 \"환불\" 열에 마이너스로 보이고 합계에서 빠집니다. 카카오 이미지에는 합계만 반영됩니다.",
+  memoLabel: "메모",
+  memoPlaceholder: "메모 (예: 쿠팡 주문번호, 고객명)",
+  listLabel: "넣은 환불",
+  emptyText: "넣은 환불이 없습니다.",
+  saveLabel: "환불 저장",
+  helpText: "Enter로도 추가됩니다. 아래 줄을 누르면 위로 올라와 고칠 수 있습니다.",
+};
+
+/** 줄 묶음 입력 카드: 위에 입력 한 줄, 아래에 넣은 줄 목록. 줄을 누르면 입력 줄로 올라와 고칠 수 있습니다. */
 export function ManualEntry({
+  copy,
   lines,
   onLines,
   status,
@@ -14,8 +53,10 @@ export function ManualEntry({
   dirty,
   onSave,
   note,
-  restaurants,
+  suggestions = [],
+  blockReason = "",
 }: {
+  copy: LineBundleCopy;
   lines: ManualLine[];
   onLines: (lines: ManualLine[]) => void;
   status: string;
@@ -23,9 +64,12 @@ export function ManualEntry({
   dirty: boolean;
   onSave: () => void;
   note: string;
-  restaurants: string[];
+  suggestions?: string[];
+  /** 비어 있지 않으면 저장을 막고 이 문구를 경고로 보여 줍니다. */
+  blockReason?: string;
 }) {
-  const restaurantListId = useId();
+  const suggestionListId = useId();
+  const titleId = `${copy.id}-title`;
   const [product, setProduct] = useState(FIRST.product);
   const [size, setSize] = useState(FIRST.sizes.at(-1) ?? FIRST.sizes[0]);
   const [qty, setQty] = useState("1");
@@ -60,13 +104,11 @@ export function ManualEntry({
   };
 
   return (
-    <section className="card" aria-labelledby="manual-title">
+    <section className="card" aria-labelledby={titleId}>
       <div className="card-head" style={{ alignItems: "baseline" }}>
         <div>
-          <h2 id="manual-title">식당 주문</h2>
-          <p className="hint">
-            엑셀에 없는 식당 주문을 넣습니다. 결과표에서 &quot;식당&quot; 열로 보입니다.
-          </p>
+          <h2 id={titleId}>{copy.title}</h2>
+          <p className="hint">{copy.hint}</p>
         </div>
         <span className="caption">{status}</span>
       </div>
@@ -115,19 +157,21 @@ export function ManualEntry({
           />
         </label>
         <label className="manual-memo">
-          <span className="sr-only">식당 이름</span>
+          <span className="sr-only">{copy.memoLabel}</span>
           <input
             value={memo}
-            placeholder="식당 이름 (목록에서 고르거나 새로 입력)"
-            list={restaurantListId}
+            placeholder={copy.memoPlaceholder}
+            list={suggestions.length ? suggestionListId : undefined}
             autoComplete="off"
             onChange={(event) => setMemo(event.target.value)}
           />
-          <datalist id={restaurantListId}>
-            {restaurants.map((name) => (
-              <option key={name} value={name} />
-            ))}
-          </datalist>
+          {suggestions.length ? (
+            <datalist id={suggestionListId}>
+              {suggestions.map((name) => (
+                <option key={name} value={name} />
+              ))}
+            </datalist>
+          ) : null}
         </label>
         <button type="submit" className="primary-button" style={{ marginTop: 0 }} disabled={!qtyValid}>
           {editingId ? "고치기" : "추가"}
@@ -139,12 +183,11 @@ export function ManualEntry({
         )}
       </form>
       <p className="hint" style={{ margin: "8px 0 12px" }}>
-        Enter로도 추가됩니다. 식당 이름은 다음 줄에도 남습니다. 처음 쓰는 식당은 저장하면 다음부터
-        목록에 나옵니다. 아래 줄을 누르면 위로 올라와 고칠 수 있습니다.
+        {copy.helpText}
       </p>
 
       {lines.length ? (
-        <ul className="upload-list" aria-label="넣은 식당 주문">
+        <ul className="upload-list" aria-label={copy.listLabel}>
           {lines.map((l) => (
             <li key={l.id} className={l.id === editingId ? "is-editing" : undefined}>
               <button
@@ -173,17 +216,22 @@ export function ManualEntry({
           ))}
         </ul>
       ) : (
-        <p className="file-name">넣은 식당 주문이 없습니다.</p>
+        <p className="file-name">{copy.emptyText}</p>
       )}
 
+      {blockReason ? (
+        <p className="status-error" role="alert" style={{ margin: "12px 0 0" }}>
+          {blockReason}
+        </p>
+      ) : null}
       <div className="actions" style={{ marginTop: 12, alignItems: "center" }}>
         <button
           type="button"
           className="ghost-button"
           onClick={onSave}
-          disabled={saving || !dirty}
+          disabled={saving || !dirty || Boolean(blockReason)}
         >
-          {saving ? "저장 중…" : dirty ? "식당 주문 저장" : "저장됨"}
+          {saving ? "저장 중…" : dirty ? copy.saveLabel : "저장됨"}
         </button>
         <span className="caption" aria-live="polite">
           {note}

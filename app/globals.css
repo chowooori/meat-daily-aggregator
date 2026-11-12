@@ -756,6 +756,10 @@ table.worksheet td.num.total {
   font-weight: 800;
 }
 
+table.worksheet td.num.neg {
+  color: var(--danger);
+}
+
 table.worksheet td.num.zero {
   color: #8a929e;
   font-weight: 500;

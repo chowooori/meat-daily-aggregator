@@ -62,6 +62,8 @@ export function renderSharePng(
   rounds: number[],
   reportDate: Date,
   createdAt: Date = new Date(),
+  /** 표 아래에 작게 넣는 한 줄 안내(예: 합계에 환불이 반영됐다는 문구). */
+  note = "",
 ): string {
   const roundCols = rounds.map(roundLabel);
   const numW = roundCols.length > 2 ? 86 : 100;
@@ -74,10 +76,11 @@ export function renderSharePng(
   const gap = 28;
   const kgBandH = 48;
   const footerH = 60;
+  const noteH = note ? 36 : 0;
   const qN = Math.max(qtyRows.length, 1);
   const kN = Math.max(kgRows.length, 1);
   const height =
-    bandH + 20 + headH + qN * rowH + gap + kgBandH + headH + kN * rowH + footerH;
+    bandH + 20 + headH + qN * rowH + gap + kgBandH + headH + kN * rowH + noteH + footerH;
 
   const canvas = document.createElement("canvas");
   canvas.width = WIDTH * SCALE;
@@ -197,6 +200,7 @@ export function renderSharePng(
   ctx.fillStyle = MUTED;
   ctx.font = `18px ${FONT}`;
   ctx.textAlign = "left";
+  if (note) ctx.fillText(note, PAD, height - footerH - noteH / 2);
   ctx.fillText(`${hhmm(createdAt)} 작성`, PAD, height - footerH / 2);
   ctx.textAlign = "right";
   ctx.fillText("일일 생산 집계", right, height - footerH / 2);
