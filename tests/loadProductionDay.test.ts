@@ -67,6 +67,7 @@ describe("loadProductionDay", () => {
         row(11, 1, { category: "사태", size_label: "1kg", size_g: 1000, round_2: 2, qty_total: 2 }),
         row(12, 1, { category: "육회", size_label: "1kg", size_g: 1000, round_1: 4, qty_total: 4 }),
         row(12, 2, { kind: "group_kg", category: "육회", round_1: 4, qty_total: 4 }),
+        row(12, 3, { kind: "watch", product: "육회챱챱", category: "육회 1kg", qty_total: 4 }),
         row(13, 1, { category: "사태", size_label: "1kg", size_g: 1000, round_2: 99, qty_total: 99 }),
       ],
     });
@@ -81,6 +82,7 @@ describe("loadProductionDay", () => {
     expect(loaded.rounds[0].rows).toEqual([
       { product: "육회", sizeLabel: "1kg", sizeG: 1000, qty: 4 },
     ]);
+    expect(loaded.rounds[0].watch).toEqual([{ business: "육회챱챱", item: "육회 1kg", qty: 4 }]);
   });
 
   it("reads each round from an older job that held several rounds", async () => {

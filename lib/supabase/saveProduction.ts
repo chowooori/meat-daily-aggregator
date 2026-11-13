@@ -2,7 +2,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 const BATCH_SIZE = 200;
 
-export type ProductionRowKind = "pack" | "group_kg";
+/** watch: 확인 업체 주문(안내 문구용, 주소 없음). */
+export type ProductionRowKind = "pack" | "group_kg" | "watch";
 
 export interface ProductionRowRecord {
   row_no: number;
@@ -178,6 +179,8 @@ export interface SavedRound {
   savedAt: string;
   packCount: number;
   rows: SavedRoundRow[];
+  /** 저장해 둔 확인 업체 주문. 안내 문구를 다시 만들 때 씁니다. */
+  watch: Array<{ business: string; item: string; qty: number }>;
 }
 
 type JobRecord = {
@@ -188,6 +191,7 @@ type JobRecord = {
 
 type RowRecord = {
   job_id: number;
+  kind?: string;
   category: string | null;
   product: string | null;
   size_label: string | null;
@@ -230,9 +234,9 @@ export async function loadProductionDay(
   const jobIds = [...new Set([...latest.values()].map((job) => job.id))];
   const { data: rows, error: rowError } = await supabase
     .from("production_rows")
-    .select("job_id, category, product, size_label, size_g, round_1, round_2, round_3, qty_total, payload")
+    .select("job_id, kind, category, product, size_label, size_g, round_1, round_2, round_3, qty_total, payload")
     .in("job_id", jobIds)
-    .eq("kind", "pack")
+    .in("kind", ["pack", "watch"])
     .order("row_no", { ascending: true });
   if (rowError) return { ok: false, error: rowError.message };
 
@@ -240,8 +244,17 @@ export async function loadProductionDay(
     .sort(([a], [b]) => a - b)
     .map(([round, job]) => {
       const jobRounds = job.rounds ?? [];
-      const roundRows = ((rows ?? []) as RowRecord[])
-        .filter((row) => row.job_id === job.id)
+      const jobRows = ((rows ?? []) as RowRecord[]).filter((row) => row.job_id === job.id);
+      const watch = jobRows
+        .filter((row) => row.kind === "watch")
+        .map((row) => ({
+          business: String(row.product ?? ""),
+          item: String(row.category ?? ""),
+          qty: savedRoundQty(row, round, jobRounds),
+        }))
+        .filter((row) => row.qty > 0);
+      const roundRows = jobRows
+        .filter((row) => row.kind !== "watch")
         .map((row) => ({
           product: String(row.category || row.product || ""),
           sizeLabel: String(row.size_label ?? ""),
@@ -258,6 +271,7 @@ export async function loadProductionDay(
         savedAt: job.created_at,
         packCount: roundRows.reduce((sum, row) => sum + row.qty, 0),
         rows: roundRows,
+        watch,
       };
     });
   return { ok: true, rounds };

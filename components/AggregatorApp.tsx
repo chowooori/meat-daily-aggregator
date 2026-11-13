@@ -33,6 +33,12 @@ import {
   type ManualLine,
 } from "@/lib/aggregator/manual";
 import { savedRowsToTotals } from "@/lib/aggregator/savedRounds";
+import {
+  buildWatchRows,
+  matchWatchBusiness,
+  watchNotices,
+  type WatchHit,
+} from "@/lib/aggregator/watchBusinesses";
 import { productionRows } from "@/lib/aggregator/summary";
 import {
   buildProductionRows,
@@ -76,6 +82,8 @@ type BatchResult = {
   batches: Record<number, DailyTotals>;
   details: Record<number, DetailRow[]>;
   errors: string[];
+  /** 이번에 올린 파일에서 찾은 확인 업체 주문. */
+  watch: WatchHit[];
 };
 
 type SavedState = {
@@ -172,12 +180,14 @@ export function AggregatorApp() {
       setLoading(true);
       const batches: Record<number, DailyTotals> = {};
       const details: Record<number, DetailRow[]> = {};
+      const watch: WatchHit[] = [];
       const errors: string[] = [];
 
       for (const { file, round: roundNo } of uploads) {
         try {
           const rows = await readOrdersMatrix(file);
-          const { totals, detail } = aggregateOrders(rows);
+          const { totals, detail, watch: fileWatch } = aggregateOrders(rows);
+          watch.push(...fileWatch.map((hit) => ({ ...hit, round: roundNo })));
           if (batches[roundNo]) {
             batches[roundNo].merge(totals);
             details[roundNo] = [...(details[roundNo] || []), ...detail];
@@ -195,7 +205,7 @@ export function AggregatorApp() {
       }
 
       if (!cancelled) {
-        setResult({ batches, details, errors });
+        setResult({ batches, details, errors, watch });
         setActiveTab(0);
         setSaveNote("");
         setConfirmOverwrite(false);
@@ -322,6 +332,25 @@ export function AggregatorApp() {
     : savedManualRound && savedManual.length
       ? { round: MANUAL_ROUND, text: `식당 저장됨 ${hhmm(savedManualRound.savedAt)}`, tone: "saved" }
       : { round: MANUAL_ROUND, text: "식당 없음", tone: "none" };
+  /** 확인 업체 주문: 올린 차수는 파일에서, 나머지 차수는 저장분에서, 식당 주문은 식당 이름으로 찾습니다. */
+  const watchHits = useMemo<WatchHit[]>(
+    () => [
+      ...(result?.watch ?? []),
+      ...savedRounds
+        .filter((saved) => !uploadedRounds.includes(saved.round))
+        .flatMap((saved) => saved.watch.map((w) => ({ ...w, round: saved.round }))),
+      ...manualLines.flatMap((line) => {
+        const business = matchWatchBusiness([line.memo]);
+        return business
+          ? [{ business: business.name, item: `${line.product} ${line.size}`, qty: line.qty, round: MANUAL_ROUND }]
+          : [];
+      }),
+    ],
+    [result, savedRounds, uploadedRounds, manualLines],
+  );
+  const notices = useMemo(() => watchNotices(watchHits), [watchHits]);
+  const noticesKey = notices.join("\n");
+
   const refundStatus = refundDirty
     ? { round: REFUND_ROUND, text: "환불 수정됨(미저장)", tone: "pending" }
     : savedRefundRound && savedRefunds.length
@@ -389,11 +418,12 @@ export function AggregatorApp() {
         reportDate,
         new Date(),
         hasRefunds ? "합계는 환불을 뺀 수량입니다." : "",
+        noticesKey ? noticesKey.split("\n") : [],
       );
     } catch {
       return null;
     }
-  }, [combined, pngCols, groupRows, pngRounds, reportDate, hasRefunds]);
+  }, [combined, pngCols, groupRows, pngRounds, reportDate, hasRefunds, noticesKey]);
 
   const handleExcelDownload = () => {
     if (!rounds.length) return;
@@ -443,7 +473,11 @@ export function AggregatorApp() {
         message: fileErrors.length
           ? fileErrors.join(" / ")
           : `${roundNo}차 ${roundRows.length}종 · ${roundPacks}개 저장`,
-        rows: buildProductionRows(roundRows, roundGroups, [roundNo]),
+        rows: (() => {
+          const rows = buildProductionRows(roundRows, roundGroups, [roundNo]);
+          const hits = (result.watch ?? []).filter((hit) => hit.round === roundNo);
+          return [...rows, ...buildWatchRows(hits, rows.length + 1)];
+        })(),
       });
       if (!saved.ok) {
         failure = `${roundNo}차를 저장하지 못했습니다. ${saved.error || ""}`.trim();
@@ -687,6 +721,18 @@ export function AggregatorApp() {
           ))}
         </div>
       ) : null}
+
+      {notices.length > 0 && (
+        <section className="watch-box" aria-labelledby="watch-title">
+          <h2 id="watch-title">확인 업체 주문</h2>
+          <ul>
+            {notices.map((text) => (
+              <li key={text}>{text}</li>
+            ))}
+          </ul>
+          <p className="caption">카카오 이미지 아래 &quot;주의 사항&quot;에도 같은 문구가 들어갑니다.</p>
+        </section>
+      )}
 
       {unmatched.length > 0 && (
         <section className="alert" role="alert" aria-labelledby="unmatched-title">

@@ -7,11 +7,14 @@ import {
   parseOptionText,
   type ParsedLine,
 } from "./parser";
+import { matchWatchBusiness, watchItems } from "./watchBusinesses";
 
 export type ExcelValue = string | number | boolean | Date | null;
 
 const OPTION_ALIASES = ["주문선택사항", "선택사항", "옵션", "주문옵션"] as const;
 const QTY_ALIASES = ["주문수량", "수량", "개수"] as const;
+const ADDRESS_ALIASES = ["배송지주소", "주소"] as const;
+const RECIPIENT_ALIASES = ["수령자명", "수령자", "받는분"] as const;
 
 export class ExcelFormatError extends Error {
   constructor(message: string) {
@@ -132,6 +135,8 @@ export function aggregateOrders(rows: Record<string, ExcelValue>[]): {
   totals: DailyTotals;
   parsed: ParsedLine[];
   detail: DetailRow[];
+  /** 확인 업체 주문(업체·상품·수량). 주소와 수령자명은 돌려주지 않습니다. */
+  watch: Array<{ business: string; item: string; qty: number }>;
 } {
   const columns = rows.length ? Object.keys(rows[0]) : [];
   const optionCol = findColumn(columns, OPTION_ALIASES);
@@ -141,6 +146,10 @@ export function aggregateOrders(rows: Record<string, ExcelValue>[]): {
       `필수 열을 찾지 못했습니다. '주문선택사항'과 '주문수량' 열이 있는지 확인하세요. 현재 열: ${columns.join(", ")}`,
     );
   }
+
+  const addressCol = findColumn(columns, ADDRESS_ALIASES);
+  const recipientCol = findColumn(columns, RECIPIENT_ALIASES);
+  const watchLines = new Map<string, ParsedLine[]>();
 
   const totals = new DailyTotals();
   const parsed: ParsedLine[] = [];
@@ -158,7 +167,19 @@ export function aggregateOrders(rows: Record<string, ExcelValue>[]): {
     const lines = parseOptionText(option, qty);
     parsed.push(...lines);
     accumulate(lines, totals);
+
+    const business = matchWatchBusiness([
+      addressCol ? row[addressCol] : "",
+      recipientCol ? row[recipientCol] : "",
+    ]);
+    if (business) {
+      watchLines.set(business.name, [...(watchLines.get(business.name) ?? []), ...lines]);
+    }
   }
+
+  const watch = [...watchLines.entries()].flatMap(([business, lines]) =>
+    watchItems(lines).map((item) => ({ business, ...item })),
+  );
 
   const detail: DetailRow[] = parsed.map((line) => ({
     원문: line.original,
@@ -171,5 +192,5 @@ export function aggregateOrders(rows: Record<string, ExcelValue>[]): {
     비고: line.note,
   }));
 
-  return { totals, parsed, detail };
+  return { totals, parsed, detail, watch };
 }

@@ -765,6 +765,28 @@ table.worksheet td.num.zero {
   font-weight: 500;
 }
 
+/* 확인 업체 안내 */
+.watch-box {
+  padding: 16px 18px;
+  border: 1px solid #f2c48d;
+  border-radius: 14px;
+  background: #fff4e5;
+  color: #7a3b12;
+}
+
+.watch-box h2 {
+  margin: 0 0 6px;
+  font-size: 1.05rem;
+}
+
+.watch-box ul {
+  margin: 0 0 8px;
+  padding-left: 1.1rem;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1.6;
+}
+
 /* 미인식 주문 경고 */
 .alert {
   padding: 16px 18px;
