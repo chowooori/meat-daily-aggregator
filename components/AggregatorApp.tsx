@@ -885,40 +885,6 @@ export function AggregatorApp() {
 
           {rounds.length > 0 && (
             <>
-              <section className="sheet-section" aria-labelledby="today-title">
-                <div className="sheet-head">
-                  <h2 id="today-title">오늘 만들어야 할 수량</h2>
-                  <p className="summary">
-                    <strong>{skuCount}종 · 총 {packCount}개</strong>
-                    {roundSums.length > 1 ? (
-                      <span>
-                        {roundSums.map((r) => `${r.col} ${r.sum}`).join(" · ")}
-                      </span>
-                    ) : null}
-                  </p>
-                </div>
-                <ProductionTable
-                  caption="오늘 만들어야 할 수량"
-                  rows={qtyTableRows}
-                  nameKey="품목"
-                  subKey="용량"
-                  qtyColumns={qtyColumns}
-                />
-              </section>
-
-              <section className="sheet-section" aria-labelledby="kg-title">
-                <div className="sheet-head">
-                  <h3 id="kg-title">육회·육사시미 중량 합계</h3>
-                  <p className="caption">모든 용량을 kg으로 합친 값입니다.</p>
-                </div>
-                <ProductionTable
-                  caption="육회·육사시미 중량 합계"
-                  rows={kgTableRows}
-                  nameKey="품목"
-                  qtyColumns={kgQtyColumns}
-                />
-              </section>
-
               <section className="card" aria-labelledby="share-title">
                 <h2 id="share-title">공유</h2>
                 <p className="hint" style={{ marginBottom: 12 }}>
@@ -958,6 +924,41 @@ export function AggregatorApp() {
                 )}
               </section>
 
+          <section className="sheet-section" aria-labelledby="today-title">
+                <div className="sheet-head">
+                  <h2 id="today-title">오늘 만들어야 할 수량</h2>
+                  <p className="summary">
+                    <strong>{skuCount}종 · 총 {packCount}개</strong>
+                    {roundSums.length > 1 ? (
+                      <span>
+                        {roundSums.map((r) => `${r.col} ${r.sum}`).join(" · ")}
+                      </span>
+                    ) : null}
+                  </p>
+                </div>
+                <ProductionTable
+                  caption="오늘 만들어야 할 수량"
+                  rows={qtyTableRows}
+                  nameKey="품목"
+                  subKey="용량"
+                  qtyColumns={qtyColumns}
+                />
+              </section>
+
+              <section className="sheet-section" aria-labelledby="kg-title">
+                <div className="sheet-head">
+                  <h3 id="kg-title">육회·육사시미 중량 합계</h3>
+                  <p className="caption">모든 용량을 kg으로 합친 값입니다.</p>
+                </div>
+                <ProductionTable
+                  caption="육회·육사시미 중량 합계"
+                  rows={kgTableRows}
+                  nameKey="품목"
+                  qtyColumns={kgQtyColumns}
+                />
+              </section>
+
+    
               <details className="detail-box">
                 <summary className="section-title">차수 상세 · 주문별 해석 내역</summary>
 
