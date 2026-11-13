@@ -861,3 +861,29 @@ table.worksheet td.num.zero {
     min-width: 100%;
   }
 }
+
+/* 확인 업체 관리 */
+.watch-manager summary {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.watch-manager summary::-webkit-details-marker {
+  display: none;
+}
+
+.watch-manager summary::before {
+  content: "▸";
+  color: var(--muted);
+}
+
+.watch-manager[open] summary::before {
+  content: "▾";
+}
+
+.watch-manager summary h2 {
+  margin: 0;
+}

@@ -14,10 +14,28 @@ export type WatchBusiness = {
   note: string;
 };
 
-/** 업체가 생기면 여기에 추가합니다. */
+const compact = (text: unknown) => String(text ?? "").replace(/\s+/g, "");
+
+/** 화면의 "확인 업체 관리"에서 아직 한 번도 저장하지 않았을 때 쓰는 처음 목록. */
 export const WATCH_BUSINESSES: readonly WatchBusiness[] = [
   { name: "육회챱챱", note: "200g 소분포장" },
 ];
+
+/** 저장 전에 업체 목록을 정리합니다: 앞뒤 공백 제거, 빈 이름 제외, 같은 이름은 처음 것만. */
+export function cleanWatchBusinesses(input: unknown): WatchBusiness[] {
+  if (!Array.isArray(input)) return [];
+  const seen = new Set<string>();
+  const out: WatchBusiness[] = [];
+  for (const item of input.slice(0, 200)) {
+    const name = String((item as WatchBusiness)?.name ?? "").trim().slice(0, 50);
+    const note = String((item as WatchBusiness)?.note ?? "").trim().slice(0, 100);
+    const key = compact(name);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push({ name, note });
+  }
+  return out;
+}
 
 /** 확인 업체 주문 한 건(업체·상품·수량·차수). 주소나 수령자명은 담지 않습니다. */
 export type WatchHit = {
@@ -27,7 +45,6 @@ export type WatchHit = {
   round: number;
 };
 
-const compact = (text: unknown) => String(text ?? "").replace(/\s+/g, "");
 
 /** 주소·수령자명·식당 이름 중 하나에 업체 이름이 들어 있으면 그 업체를 돌려줍니다. */
 export function matchWatchBusiness(

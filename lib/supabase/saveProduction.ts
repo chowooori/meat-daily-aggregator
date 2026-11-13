@@ -1,9 +1,13 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import {
+  cleanWatchBusinesses,
+  type WatchBusiness,
+} from "@/lib/aggregator/watchBusinesses";
 
 const BATCH_SIZE = 200;
 
 /** watch: 확인 업체 주문(안내 문구용, 주소 없음). */
-export type ProductionRowKind = "pack" | "group_kg" | "watch";
+export type ProductionRowKind = "pack" | "group_kg" | "watch" | "watch_business";
 
 export interface ProductionRowRecord {
   row_no: number;
@@ -350,5 +354,99 @@ export async function fetchRestaurantNames(): Promise<string[]> {
     return response.ok && body.ok ? (body.names as string[]) : [];
   } catch {
     return [];
+  }
+}
+
+/** 확인 업체 목록은 날짜와 상관없는 설정이라, 이 표에 날짜 1900-01-01·차수 -9 묶음으로 저장합니다. 최신 저장분이 현재 목록입니다. */
+export const WATCH_SETTINGS_ROUND = -9;
+const WATCH_SETTINGS_DATE = "1900-01-01";
+
+export async function loadWatchBusinesses(
+  supabase: SupabaseClient,
+): Promise<{ ok: true; businesses: WatchBusiness[] | null } | { ok: false; error: string }> {
+  const { data: jobs, error: jobError } = await supabase
+    .from("production_jobs")
+    .select("id")
+    .eq("report_date", WATCH_SETTINGS_DATE)
+    .contains("rounds", [WATCH_SETTINGS_ROUND])
+    .in("status", ["ok"])
+    .order("id", { ascending: false })
+    .limit(1);
+  if (jobError) return { ok: false, error: jobError.message };
+  const latest = ((jobs ?? []) as { id: number }[])[0];
+  if (!latest) return { ok: true, businesses: null };
+
+  const { data: rows, error: rowError } = await supabase
+    .from("production_rows")
+    .select("product, payload")
+    .eq("job_id", latest.id)
+    .order("row_no", { ascending: true });
+  if (rowError) return { ok: false, error: rowError.message };
+  return {
+    ok: true,
+    businesses: cleanWatchBusinesses(
+      ((rows ?? []) as { product: string | null; payload: Record<string, unknown> | null }[]).map(
+        (row) => ({ name: row.product ?? "", note: String(row.payload?.["요구사항"] ?? "") }),
+      ),
+    ),
+  };
+}
+
+export async function saveWatchBusinesses(
+  supabase: SupabaseClient,
+  input: unknown,
+): Promise<SaveProductionResult & { businesses?: WatchBusiness[] }> {
+  const businesses = cleanWatchBusinesses(input);
+  const saved = await insertProductionJob(supabase, {
+    reportDate: new Date(1900, 0, 1),
+    sourceFiles: [],
+    rounds: [WATCH_SETTINGS_ROUND],
+    skuCount: businesses.length,
+    packCount: 0,
+    unmatchedCount: 0,
+    status: "ok",
+    message: `확인 업체 ${businesses.length}곳`,
+    rows: businesses.map((b, idx) => ({
+      row_no: idx + 1,
+      kind: "watch_business",
+      product: b.name,
+      category: null,
+      size_label: null,
+      size_g: null,
+      unit: "곳",
+      round_1: null,
+      round_2: null,
+      round_3: null,
+      qty_total: null,
+      payload: { 업체: b.name, 요구사항: b.note },
+    })),
+  });
+  return saved.ok ? { ...saved, businesses } : saved;
+}
+
+export async function fetchWatchBusinesses(): Promise<WatchBusiness[] | null> {
+  try {
+    const response = await fetch("/api/watch-businesses");
+    const body = await response.json();
+    return response.ok && body.ok ? (body.businesses as WatchBusiness[] | null) : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function postWatchBusinesses(
+  businesses: WatchBusiness[],
+): Promise<{ ok: true; businesses: WatchBusiness[] } | { ok: false; error: string }> {
+  try {
+    const response = await fetch("/api/watch-businesses", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ businesses }),
+    });
+    const body = await response.json();
+    if (!response.ok || !body.ok) return { ok: false, error: body.error || "저장하지 못했습니다." };
+    return { ok: true, businesses: body.businesses as WatchBusiness[] };
+  } catch {
+    return { ok: false, error: "저장하지 못했습니다." };
   }
 }

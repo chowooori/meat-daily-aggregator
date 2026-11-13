@@ -36,7 +36,9 @@ import { savedRowsToTotals } from "@/lib/aggregator/savedRounds";
 import {
   buildWatchRows,
   matchWatchBusiness,
+  WATCH_BUSINESSES,
   watchNotices,
+  type WatchBusiness,
   type WatchHit,
 } from "@/lib/aggregator/watchBusinesses";
 import { productionRows } from "@/lib/aggregator/summary";
@@ -44,6 +46,7 @@ import {
   buildProductionRows,
   fetchRestaurantNames,
   fetchSavedRounds,
+  fetchWatchBusinesses,
   saveProductionJob,
   type SavedRound,
 } from "@/lib/supabase/saveProduction";
@@ -56,6 +59,7 @@ import {
 } from "./FileDropMulti";
 import { ManualEntry, REFUND_COPY, RESTAURANT_COPY } from "./ManualEntry";
 import { ProductionTable, type QtyColumn } from "./ProductionTable";
+import { WatchBusinessManager } from "./WatchBusinessManager";
 
 function todayInputValue(): string {
   const d = new Date();
@@ -128,6 +132,18 @@ export function AggregatorApp() {
   const [manualSaving, setManualSaving] = useState(false);
   const [manualNote, setManualNote] = useState("");
   const [savedRestaurants, setSavedRestaurants] = useState<string[]>([]);
+  const [watchBusinesses, setWatchBusinesses] = useState<WatchBusiness[]>([...WATCH_BUSINESSES]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetchWatchBusinesses().then((list) => {
+      // 한 번도 저장하지 않았으면(null) 처음 목록을 그대로 씁니다.
+      if (!cancelled && list) setWatchBusinesses(list);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
   const manualKeepRef = useRef<{ date: string; dirty: boolean }>({ date: "", dirty: false });
   const [refundLines, setRefundLines] = useState<ManualLine[]>([]);
   const [refundSaving, setRefundSaving] = useState(false);
@@ -186,7 +202,7 @@ export function AggregatorApp() {
       for (const { file, round: roundNo } of uploads) {
         try {
           const rows = await readOrdersMatrix(file);
-          const { totals, detail, watch: fileWatch } = aggregateOrders(rows);
+          const { totals, detail, watch: fileWatch } = aggregateOrders(rows, watchBusinesses);
           watch.push(...fileWatch.map((hit) => ({ ...hit, round: roundNo })));
           if (batches[roundNo]) {
             batches[roundNo].merge(totals);
@@ -217,7 +233,7 @@ export function AggregatorApp() {
     return () => {
       cancelled = true;
     };
-  }, [uploads]);
+  }, [uploads, watchBusinesses]);
 
   const reportDate = useMemo(
     () => parseDateInput(reportDateStr),
@@ -340,15 +356,18 @@ export function AggregatorApp() {
         .filter((saved) => !uploadedRounds.includes(saved.round))
         .flatMap((saved) => saved.watch.map((w) => ({ ...w, round: saved.round }))),
       ...manualLines.flatMap((line) => {
-        const business = matchWatchBusiness([line.memo]);
+        const business = matchWatchBusiness([line.memo], watchBusinesses);
         return business
           ? [{ business: business.name, item: `${line.product} ${line.size}`, qty: line.qty, round: MANUAL_ROUND }]
           : [];
       }),
     ],
-    [result, savedRounds, uploadedRounds, manualLines],
+    [result, savedRounds, uploadedRounds, manualLines, watchBusinesses],
   );
-  const notices = useMemo(() => watchNotices(watchHits), [watchHits]);
+  const notices = useMemo(
+    () => watchNotices(watchHits, watchBusinesses),
+    [watchHits, watchBusinesses],
+  );
   const noticesKey = notices.join("\n");
 
   const refundStatus = refundDirty
@@ -984,6 +1003,8 @@ export function AggregatorApp() {
           </section>
         </>
       )}
+
+      <WatchBusinessManager businesses={watchBusinesses} onSaved={setWatchBusinesses} />
 
       <p className="note">
         엑셀 원본은 이 브라우저에서만 읽습니다. 저장할 때는 집계 결과만

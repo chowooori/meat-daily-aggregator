@@ -7,7 +7,12 @@ import {
   parseOptionText,
   type ParsedLine,
 } from "./parser";
-import { matchWatchBusiness, watchItems } from "./watchBusinesses";
+import {
+  matchWatchBusiness,
+  WATCH_BUSINESSES,
+  watchItems,
+  type WatchBusiness,
+} from "./watchBusinesses";
 
 export type ExcelValue = string | number | boolean | Date | null;
 
@@ -131,7 +136,10 @@ export interface DetailRow {
   비고: string;
 }
 
-export function aggregateOrders(rows: Record<string, ExcelValue>[]): {
+export function aggregateOrders(
+  rows: Record<string, ExcelValue>[],
+  businesses: readonly WatchBusiness[] = WATCH_BUSINESSES,
+): {
   totals: DailyTotals;
   parsed: ParsedLine[];
   detail: DetailRow[];
@@ -168,10 +176,10 @@ export function aggregateOrders(rows: Record<string, ExcelValue>[]): {
     parsed.push(...lines);
     accumulate(lines, totals);
 
-    const business = matchWatchBusiness([
-      addressCol ? row[addressCol] : "",
-      recipientCol ? row[recipientCol] : "",
-    ]);
+    const business = matchWatchBusiness(
+      [addressCol ? row[addressCol] : "", recipientCol ? row[recipientCol] : ""],
+      businesses,
+    );
     if (business) {
       watchLines.set(business.name, [...(watchLines.get(business.name) ?? []), ...lines]);
     }

@@ -3,6 +3,7 @@ import { MANUAL_ROUND } from "@/lib/aggregator/batches";
 import { aggregateOrders } from "@/lib/aggregator/excel";
 import {
   buildWatchRows,
+  cleanWatchBusinesses,
   matchWatchBusiness,
   watchNotices,
 } from "@/lib/aggregator/watchBusinesses";
@@ -51,6 +52,21 @@ describe("watch businesses", () => {
     );
     expect(rows).toEqual([
       expect.objectContaining({ row_no: 10, kind: "watch", product: "육회챱챱", category: "육회 1kg", qty_total: 4 }),
+    ]);
+  });
+
+  it("uses the list passed in and cleans names before saving", () => {
+    const list = cleanWatchBusinesses([
+      { name: "  새식당 ", note: " 두껍게 " },
+      { name: "새 식당", note: "중복" },
+      { name: "", note: "이름 없음" },
+      "잘못된 값",
+    ]);
+    expect(list).toEqual([{ name: "새식당", note: "두껍게" }]);
+    expect(matchWatchBusiness(["서울 새식당 본점"], list)?.name).toBe("새식당");
+    expect(matchWatchBusiness(["충주 육회챱챱"], list)).toBeNull();
+    expect(watchNotices([{ business: "새식당", item: "사태 1kg", qty: 2, round: 1 }], list)).toEqual([
+      "새식당: 사태 1kg 2개(1차) 주문 있어요 · 두껍게",
     ]);
   });
 });
