@@ -72,6 +72,7 @@ export function ProductionTable({
                     const classes = ["num"];
                     if (col.emphasize === "total") classes.push("total");
                     if (!amount) classes.push("zero");
+                    if (amount < 0) classes.push("neg");
                     return (
                       <td key={col.key} className={classes.join(" ")}>
                         {amount ? (

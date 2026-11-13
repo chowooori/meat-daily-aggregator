@@ -16,13 +16,23 @@ export function detectRound(filename: string, fallback?: number): number {
 /** 식당 주문(화면에서 직접 넣는 주문)은 차수 0으로 저장하고, 화면에는 "식당"으로 보여 줍니다. */
 export const MANUAL_ROUND = 0;
 
+/** 환불(만들기 전에 취소된 수량)은 차수 -1로 저장하고, 집계에서는 마이너스로 뺍니다. */
+export const REFUND_ROUND = -1;
+
 export function roundLabel(roundNo: number): string {
-  return roundNo === MANUAL_ROUND ? "식당" : `${roundNo}차`;
+  if (roundNo === MANUAL_ROUND) return "식당";
+  if (roundNo === REFUND_ROUND) return "환불";
+  return `${roundNo}차`;
 }
 
-/** 1차·2차·3차 다음에 식당이 오도록 정렬합니다. */
+/** 1차·2차·3차 다음에 식당, 마지막에 환불이 오도록 정렬합니다. */
 export function sortRounds(rounds: number[]): number[] {
-  const rank = (r: number) => (r === MANUAL_ROUND ? Number.MAX_SAFE_INTEGER : r);
+  const rank = (r: number) =>
+    r === REFUND_ROUND
+      ? Number.MAX_SAFE_INTEGER
+      : r === MANUAL_ROUND
+        ? Number.MAX_SAFE_INTEGER - 1
+        : r;
   return [...rounds].sort((a, b) => rank(a) - rank(b));
 }
 
@@ -70,9 +80,10 @@ export function combineBatches(
     let total = 0;
     for (const roundNo of rounds) {
       const row = byRound[roundNo]?.[product];
-      const qty = row ? row["총 개수"] || 0 : 0;
+      const raw = Number(row ? row["총 개수"] || 0 : 0);
+      const qty = roundNo === REFUND_ROUND && raw ? -raw : raw;
       rec[roundLabel(roundNo)] = qty;
-      total += Number(qty);
+      total += qty;
     }
     rec.합계 = total;
     if (onlyOrdered && !total) continue;
@@ -117,4 +128,17 @@ export function meatGroupSubtotals(
     });
   }
   return result;
+}
+
+/** 환불이 그날 주문보다 많아 합계가 마이너스가 된 상품. 저장을 막는 데 씁니다. */
+export function findOverRefunds(
+  rows: CombinedRow[],
+): Array<{ 상품: string; ordered: number; refunded: number }> {
+  const refundCol = roundLabel(REFUND_ROUND);
+  return rows
+    .filter((row) => Number(row.합계) < 0)
+    .map((row) => {
+      const refunded = -Number(row[refundCol] || 0);
+      return { 상품: String(row.상품), ordered: Number(row.합계) + refunded, refunded };
+    });
 }

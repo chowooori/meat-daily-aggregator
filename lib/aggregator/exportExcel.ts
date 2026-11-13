@@ -22,6 +22,7 @@ export function buildReportWorkbook(
   reportDate: Date,
   batches: Record<number, DailyTotals>,
   manualLines: ManualLine[] = [],
+  refundLines: ManualLine[] = [],
 ): XLSX.WorkBook {
   const rounds = sortRounds(Object.keys(batches).map(Number));
   const rows = combineBatches(batches, { onlyOrdered: false });
@@ -72,6 +73,15 @@ export function buildReportWorkbook(
     }
   }
 
+  if (refundLines.length) {
+    aoa.push([]);
+    aoa.push(["환불 내역 (합계에서 뺀 수량)"]);
+    aoa.push(["품목", "용량", "수량", "메모"]);
+    for (const line of refundLines) {
+      aoa.push([line.product, line.size, -line.qty, line.memo]);
+    }
+  }
+
   const sheet = XLSX.utils.aoa_to_sheet(aoa);
   sheet["!cols"] = [
     { wch: 22 },
@@ -89,8 +99,9 @@ export function reportBytes(
   reportDate: Date,
   batches: Record<number, DailyTotals>,
   manualLines: ManualLine[] = [],
+  refundLines: ManualLine[] = [],
 ): ArrayBuffer {
-  const wb = buildReportWorkbook(reportDate, batches, manualLines);
+  const wb = buildReportWorkbook(reportDate, batches, manualLines, refundLines);
   return XLSX.write(wb, { bookType: "xlsx", type: "array" }) as ArrayBuffer;
 }
 

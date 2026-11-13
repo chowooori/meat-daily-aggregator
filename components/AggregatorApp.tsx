@@ -3,7 +3,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   combineBatches,
+  findOverRefunds,
   MANUAL_ROUND,
+  REFUND_ROUND,
   meatGroupSubtotals,
   roundLabel,
   sortRounds,
@@ -46,7 +48,7 @@ import {
   uploadKey,
   type Upload,
 } from "./FileDropMulti";
-import { ManualEntry } from "./ManualEntry";
+import { ManualEntry, REFUND_COPY, RESTAURANT_COPY } from "./ManualEntry";
 import { ProductionTable, type QtyColumn } from "./ProductionTable";
 
 function todayInputValue(): string {
@@ -83,8 +85,8 @@ type SavedState = {
   error: string;
 };
 
-function savedManualLines(rounds: SavedRound[]): ManualLine[] {
-  const manual = rounds.find((r) => r.round === MANUAL_ROUND);
+function savedManualLines(rounds: SavedRound[], round = MANUAL_ROUND): ManualLine[] {
+  const manual = rounds.find((r) => r.round === round);
   return (manual?.rows ?? []).map((row, idx) => ({
     id: `saved-${manual?.jobId}-${idx}`,
     product: row.product,
@@ -119,6 +121,10 @@ export function AggregatorApp() {
   const [manualNote, setManualNote] = useState("");
   const [savedRestaurants, setSavedRestaurants] = useState<string[]>([]);
   const manualKeepRef = useRef<{ date: string; dirty: boolean }>({ date: "", dirty: false });
+  const [refundLines, setRefundLines] = useState<ManualLine[]>([]);
+  const [refundSaving, setRefundSaving] = useState(false);
+  const [refundNote, setRefundNote] = useState("");
+  const refundKeepRef = useRef<{ date: string; dirty: boolean }>({ date: "", dirty: false });
 
   useEffect(() => {
     let cancelled = false;
@@ -145,6 +151,10 @@ export function AggregatorApp() {
       const keep = manualKeepRef.current;
       if (!(keep.date === reportDateStr && keep.dirty)) {
         setManualLines(savedManualLines(rounds));
+      }
+      const refundKeep = refundKeepRef.current;
+      if (!(refundKeep.date === reportDateStr && refundKeep.dirty)) {
+        setRefundLines(savedManualLines(rounds, REFUND_ROUND));
       }
     });
     return () => {
@@ -235,6 +245,21 @@ export function AggregatorApp() {
     ? savedState.rounds.find((r) => r.round === MANUAL_ROUND)
     : undefined;
   const manualDirty = manualSignature(manualLines) !== manualSignature(savedManual);
+  const savedRefunds = useMemo(
+    () =>
+      savedState && savedState.date === reportDateStr
+        ? savedManualLines(savedState.rounds, REFUND_ROUND)
+        : [],
+    [savedState, reportDateStr],
+  );
+  const savedRefundRound = savedState?.date === reportDateStr
+    ? savedState.rounds.find((r) => r.round === REFUND_ROUND)
+    : undefined;
+  const refundDirty = manualSignature(refundLines) !== manualSignature(savedRefunds);
+
+  useEffect(() => {
+    refundKeepRef.current = { date: reportDateStr, dirty: refundDirty };
+  }, [reportDateStr, refundDirty]);
 
   const restaurantNames = useMemo(() => {
     const names = [...savedRestaurants];
@@ -253,8 +278,9 @@ export function AggregatorApp() {
     const merged: Record<number, DailyTotals> = {};
     for (const saved of savedRounds) merged[saved.round] = savedRowsToTotals(saved.rows);
     if (manualLines.length) merged[MANUAL_ROUND] = manualLinesToTotals(manualLines);
+    if (refundLines.length) merged[REFUND_ROUND] = manualLinesToTotals(refundLines);
     return { ...merged, ...uploadedBatches };
-  }, [savedRounds, uploadedBatches, manualLines]);
+  }, [savedRounds, uploadedBatches, manualLines, refundLines]);
 
   const rounds = useMemo(() => sortRounds(Object.keys(batches).map(Number)), [batches]);
 
@@ -296,19 +322,34 @@ export function AggregatorApp() {
     : savedManualRound && savedManual.length
       ? { round: MANUAL_ROUND, text: `식당 저장됨 ${hhmm(savedManualRound.savedAt)}`, tone: "saved" }
       : { round: MANUAL_ROUND, text: "식당 없음", tone: "none" };
+  const refundStatus = refundDirty
+    ? { round: REFUND_ROUND, text: "환불 수정됨(미저장)", tone: "pending" }
+    : savedRefundRound && savedRefunds.length
+      ? { round: REFUND_ROUND, text: `환불 저장됨 ${hhmm(savedRefundRound.savedAt)}`, tone: "saved" }
+      : { round: REFUND_ROUND, text: "환불 없음", tone: "none" };
+  const overRefunds = findOverRefunds(allCombined);
+  const refundBlock = overRefunds.length
+    ? `환불이 주문보다 많습니다: ${overRefunds
+        .map((o) => `${o.상품} (주문 ${o.ordered}, 환불 ${o.refunded})`)
+        .join(", ")}. 수량을 확인해 주세요.`
+    : "";
   const unsavedLabels = [
     ...unsavedRounds.map((r) => `${r}차`),
     ...(manualDirty ? ["식당 주문"] : []),
+    ...(refundDirty ? ["환불"] : []),
   ];
   const overwriteTargets = unsavedRounds
     .map((r) => savedRounds.find((s) => s.round === r))
     .filter((s): s is SavedRound => Boolean(s));
 
   const roundCols = useMemo(() => rounds.map(roundLabel), [rounds]);
+  // 작업장용 카카오 이미지에는 환불 열을 넣지 않고, 합계에만 환불을 반영합니다.
+  const pngRounds = useMemo(() => rounds.filter((r) => r !== REFUND_ROUND), [rounds]);
   const pngCols = useMemo(
-    () => ["품목", "용량", ...roundCols, "합계"],
-    [roundCols],
+    () => ["품목", "용량", ...pngRounds.map(roundLabel), "합계"],
+    [pngRounds],
   );
+  const hasRefunds = rounds.includes(REFUND_ROUND);
   const groupRows = useMemo(
     () => meatGroupSubtotals(allCombined, rounds),
     [allCombined, rounds],
@@ -341,15 +382,22 @@ export function AggregatorApp() {
         for (const c of pngCols) next[c] = row[c] ?? "";
         return next;
       });
-      return renderSharePng(qtyRows, groupRows, rounds, reportDate);
+      return renderSharePng(
+        qtyRows,
+        groupRows,
+        pngRounds,
+        reportDate,
+        new Date(),
+        hasRefunds ? "합계는 환불을 뺀 수량입니다." : "",
+      );
     } catch {
       return null;
     }
-  }, [combined, pngCols, groupRows, rounds, reportDate]);
+  }, [combined, pngCols, groupRows, pngRounds, reportDate, hasRefunds]);
 
   const handleExcelDownload = () => {
     if (!rounds.length) return;
-    const bytes = reportBytes(reportDate, batches, manualLines);
+    const bytes = reportBytes(reportDate, batches, manualLines, refundLines);
     downloadBlob(
       new Blob([bytes], {
         type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -429,6 +477,8 @@ export function AggregatorApp() {
     setSavedKeys(new Set());
     setManualLines([]);
     setManualNote("");
+    setRefundLines([]);
+    setRefundNote("");
     setReportDateStr(value);
   };
 
@@ -459,6 +509,33 @@ export function AggregatorApp() {
     }
   };
 
+  /** 그날의 환불 전체를 한 묶음(차수 -1)으로 저장합니다. 주문보다 많은 환불이 있으면 저장하지 않습니다. */
+  const handleRefundSave = async () => {
+    if (refundSaving || !refundDirty || refundBlock) return;
+    setRefundSaving(true);
+    setRefundNote("");
+    const packCount = refundLines.reduce((sum, l) => sum + l.qty, 0);
+    const saved = await saveProductionJob({
+      reportDate,
+      sourceFiles: [],
+      rounds: [REFUND_ROUND],
+      skuCount: refundLines.length,
+      packCount,
+      unmatchedCount: 0,
+      status: "ok",
+      message: `환불 ${refundLines.length}줄 · ${packCount}개 저장`,
+      rows: buildManualRows(refundLines),
+    });
+    setRefundSaving(false);
+    if (saved.ok) {
+      refundKeepRef.current = { date: reportDateStr, dirty: false };
+      setRefundNote(`${reportDate.getMonth() + 1}월 ${reportDate.getDate()}일 환불을 저장했습니다.`);
+      setReloadKey((k) => k + 1);
+    } else {
+      setRefundNote(`저장하지 못했습니다. ${saved.error || ""}`.trim());
+    }
+  };
+
   const confirmDateChange = () => {
     if (!pendingDate) return;
     setUploads([]);
@@ -466,6 +543,9 @@ export function AggregatorApp() {
     setManualLines([]);
     setManualNote("");
     manualKeepRef.current = { date: "", dirty: false };
+    setRefundLines([]);
+    setRefundNote("");
+    refundKeepRef.current = { date: "", dirty: false };
     setReportDateStr(pendingDate);
     setPendingDate(null);
   };
@@ -539,6 +619,7 @@ export function AggregatorApp() {
       </section>
 
       <ManualEntry
+        copy={RESTAURANT_COPY}
         lines={manualLines}
         onLines={setManualLines}
         status={manualStatus.text}
@@ -546,7 +627,19 @@ export function AggregatorApp() {
         dirty={manualDirty}
         onSave={() => void handleManualSave()}
         note={manualNote}
-        restaurants={restaurantNames}
+        suggestions={restaurantNames}
+      />
+
+      <ManualEntry
+        copy={REFUND_COPY}
+        lines={refundLines}
+        onLines={setRefundLines}
+        status={refundStatus.text}
+        saving={refundSaving}
+        dirty={refundDirty}
+        onSave={() => void handleRefundSave()}
+        note={refundNote}
+        blockReason={refundBlock}
       />
 
       <p className="round-status" aria-live="polite">
@@ -555,7 +648,7 @@ export function AggregatorApp() {
         ) : savedState?.error ? (
           <span className="status-error">저장된 집계를 불러오지 못했습니다. {savedState.error}</span>
         ) : (
-          [...roundStatus, manualStatus].map((s) => (
+          [...roundStatus, manualStatus, refundStatus].map((s) => (
             <span key={s.round} className={`status-chip ${s.tone}`}>
               {s.text}
             </span>
