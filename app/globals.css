@@ -862,28 +862,82 @@ table.worksheet td.num.zero {
   }
 }
 
-/* 확인 업체 관리 */
-.watch-manager summary {
+/* 상단: 생산일자·저장 상태 + 화면 탭 */
+.control-bar {
+  padding: 14px 18px;
+}
+
+.control-row {
   display: flex;
-  align-items: baseline;
-  gap: 10px;
-  cursor: pointer;
-  list-style: none;
+  align-items: flex-end;
+  gap: 12px 20px;
+  flex-wrap: wrap;
 }
 
-.watch-manager summary::-webkit-details-marker {
-  display: none;
+.control-row .round-status {
+  flex: 1;
+  min-width: 0;
+  padding-bottom: 4px;
 }
 
-.watch-manager summary::before {
-  content: "▸";
+.view-tabs {
+  display: flex;
+  gap: 6px;
+  border-bottom: 1px solid #dfe3ea;
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  background: var(--page);
+  padding-top: 6px;
+}
+
+.view-tabs button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid transparent;
+  border-bottom: 0;
+  border-radius: 10px 10px 0 0;
+  background: none;
+  padding: 0.65rem 1.1rem;
+  font-weight: 700;
+  font-size: 1rem;
   color: var(--muted);
+  cursor: pointer;
+  margin-bottom: -1px;
 }
 
-.watch-manager[open] summary::before {
-  content: "▾";
+.view-tabs button.is-active {
+  background: var(--card);
+  border-color: #dfe3ea;
+  color: var(--text);
 }
 
-.watch-manager summary h2 {
+.tab-badge {
+  padding: 0.1rem 0.45rem;
+  border-radius: 999px;
+  background: #fff4e5;
+  color: #8a5300;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.tab-badge.pending {
+  background: #fff6e5;
+}
+
+.detail-box {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 12px 16px;
+}
+
+.detail-box > summary {
+  cursor: pointer;
   margin: 0;
+}
+
+.detail-box[open] > summary {
+  margin-bottom: 12px;
 }

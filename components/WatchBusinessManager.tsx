@@ -64,11 +64,11 @@ export function WatchBusinessManager({
   };
 
   return (
-    <details className="card watch-manager">
-      <summary>
-        <h2>확인 업체 관리</h2>
+    <section className="card watch-manager" aria-labelledby="watch-manager-title">
+      <div className="sheet-head">
+        <h2 id="watch-manager-title">확인 업체 관리</h2>
         <span className="caption">{list.length}곳</span>
-      </summary>
+      </div>
       <p className="hint" style={{ margin: "8px 0 12px" }}>
         엑셀의 배송지주소·수령자명이나 식당 주문의 식당 이름에 업체 이름이 들어 있으면 결과 위 안내와
         카카오 이미지 &quot;주의 사항&quot;에 알려 줍니다. 요구사항은 안내 문구 끝에 붙습니다.
@@ -146,6 +146,6 @@ export function WatchBusinessManager({
           {message}
         </span>
       </div>
-    </details>
+    </section>
   );
 }
