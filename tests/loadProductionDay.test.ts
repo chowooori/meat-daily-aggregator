@@ -1,6 +1,10 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { describe, expect, it } from "vitest";
-import { loadProductionDay, loadRestaurantNames } from "@/lib/supabase/saveProduction";
+import {
+  loadProductionDay,
+  loadRestaurantNames,
+  loadWatchBusinesses,
+} from "@/lib/supabase/saveProduction";
 
 type Table = Record<string, unknown>[];
 
@@ -31,6 +35,10 @@ function fakeClient(tables: Record<string, Table>): SupabaseClient {
               ? Number(a[col]) - Number(b[col])
               : Number(b[col]) - Number(a[col]),
           );
+          return query;
+        },
+        limit(n: number) {
+          rows = rows.slice(0, n);
           return query;
         },
         then(resolve: (v: { data: Table; error: null }) => unknown) {
@@ -67,6 +75,7 @@ describe("loadProductionDay", () => {
         row(11, 1, { category: "사태", size_label: "1kg", size_g: 1000, round_2: 2, qty_total: 2 }),
         row(12, 1, { category: "육회", size_label: "1kg", size_g: 1000, round_1: 4, qty_total: 4 }),
         row(12, 2, { kind: "group_kg", category: "육회", round_1: 4, qty_total: 4 }),
+        row(12, 3, { kind: "watch", product: "육회챱챱", category: "육회 1kg", qty_total: 4 }),
         row(13, 1, { category: "사태", size_label: "1kg", size_g: 1000, round_2: 99, qty_total: 99 }),
       ],
     });
@@ -81,6 +90,7 @@ describe("loadProductionDay", () => {
     expect(loaded.rounds[0].rows).toEqual([
       { product: "육회", sizeLabel: "1kg", sizeG: 1000, qty: 4 },
     ]);
+    expect(loaded.rounds[0].watch).toEqual([{ business: "육회챱챱", item: "육회 1kg", qty: 4 }]);
   });
 
   it("reads each round from an older job that held several rounds", async () => {
@@ -121,5 +131,29 @@ describe("loadProductionDay", () => {
 
     const loaded = await loadRestaurantNames(client);
     expect(loaded).toEqual({ ok: true, names: ["베테랑삼겹", "캥맥"] });
+  });
+
+  it("reads the newest saved watch-business list, or null when never saved", async () => {
+    const empty = await loadWatchBusinesses(fakeClient({ production_jobs: [], production_rows: [] }));
+    expect(empty).toEqual({ ok: true, businesses: null });
+
+    const client = fakeClient({
+      production_jobs: [
+        { id: 30, report_date: "1900-01-01", status: "ok", rounds: [-9] },
+        { id: 31, report_date: "1900-01-01", status: "ok", rounds: [-9] },
+      ],
+      production_rows: [
+        { job_id: 30, row_no: 1, product: "옛업체", payload: { 요구사항: "" } },
+        { job_id: 31, row_no: 1, product: "육회챱챱", payload: { 요구사항: "200g 소분포장" } },
+        { job_id: 31, row_no: 2, product: "새식당", payload: { 요구사항: "" } },
+      ],
+    });
+    expect(await loadWatchBusinesses(client)).toEqual({
+      ok: true,
+      businesses: [
+        { name: "육회챱챱", note: "200g 소분포장" },
+        { name: "새식당", note: "" },
+      ],
+    });
   });
 });

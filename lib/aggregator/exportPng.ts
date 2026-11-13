@@ -17,6 +17,8 @@ const MUTED = "#5a6268";
 const ZERO = "#a3aab1";
 const GROUP_LINE = "#8fa6bb";
 const KG_BAND = "#2e86ab";
+const CAUTION_BAND = "#b4532a";
+const CAUTION_BG = "#fff4e5";
 
 function fmt(value: unknown): string {
   const n = Number(value);
@@ -56,6 +58,22 @@ function fitText(
   return { text: `${cut}…`, font };
 }
 
+/** 폭을 넘는 문장을 글자 단위로 줄바꿈합니다(한글은 띄어쓰기가 적어 글자 단위가 안전합니다). */
+function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string[] {
+  const lines: string[] = [];
+  let current = "";
+  for (const ch of text) {
+    if (ctx.measureText(current + ch).width > maxWidth && current) {
+      lines.push(current);
+      current = ch === " " ? "" : `  ${ch}`;
+    } else {
+      current += ch;
+    }
+  }
+  if (current) lines.push(current);
+  return lines;
+}
+
 export function renderSharePng(
   qtyRows: Array<Record<string, string | number>>,
   kgRows: Array<Record<string, string | number>>,
@@ -64,6 +82,8 @@ export function renderSharePng(
   createdAt: Date = new Date(),
   /** 표 아래에 작게 넣는 한 줄 안내(예: 합계에 환불이 반영됐다는 문구). */
   note = "",
+  /** 맨 아래 "주의 사항" 칸에 넣을 확인 업체 안내 문구. */
+  cautions: string[] = [],
 ): string {
   const roundCols = rounds.map(roundLabel);
   const numW = roundCols.length > 2 ? 86 : 100;
@@ -77,10 +97,22 @@ export function renderSharePng(
   const kgBandH = 48;
   const footerH = 60;
   const noteH = note ? 36 : 0;
+  const cautionLineH = 30;
+  const cautionPad = 16;
   const qN = Math.max(qtyRows.length, 1);
   const kN = Math.max(kgRows.length, 1);
+  // 주의 사항은 줄바꿈 수를 알아야 높이가 정해지므로 먼저 측정용 캔버스로 나눕니다.
+  const measure = document.createElement("canvas").getContext("2d");
+  const cautionLines: string[] = [];
+  if (measure && cautions.length) {
+    measure.font = `bold 22px ${FONT}`;
+    for (const text of cautions) cautionLines.push(...wrapText(measure, `• ${text}`, WIDTH - PAD * 2 - 28));
+  }
+  const cautionH = cautionLines.length
+    ? gap + 44 + cautionLines.length * cautionLineH + cautionPad * 2
+    : 0;
   const height =
-    bandH + 20 + headH + qN * rowH + gap + kgBandH + headH + kN * rowH + noteH + footerH;
+    bandH + 20 + headH + qN * rowH + gap + kgBandH + headH + kN * rowH + cautionH + noteH + footerH;
 
   const canvas = document.createElement("canvas");
   canvas.width = WIDTH * SCALE;
@@ -196,6 +228,25 @@ export function renderSharePng(
     name: String(row["품목"] ?? ""),
     sub: "",
   }));
+
+  if (cautionLines.length) {
+    let cy = height - footerH - noteH - cautionH + gap;
+    ctx.fillStyle = CAUTION_BAND;
+    ctx.fillRect(PAD, cy, WIDTH - PAD * 2, 44);
+    ctx.fillStyle = WHITE;
+    ctx.textAlign = "left";
+    ctx.font = `bold 22px ${FONT}`;
+    ctx.fillText("주의 사항", PAD + 14, cy + 22);
+    cy += 44;
+    const boxH = cautionLines.length * cautionLineH + cautionPad * 2;
+    ctx.fillStyle = CAUTION_BG;
+    ctx.fillRect(PAD, cy, WIDTH - PAD * 2, boxH);
+    ctx.fillStyle = TEXT;
+    ctx.font = `bold 22px ${FONT}`;
+    cautionLines.forEach((line, i) => {
+      ctx.fillText(line, PAD + 14, cy + cautionPad + cautionLineH * i + cautionLineH / 2);
+    });
+  }
 
   ctx.fillStyle = MUTED;
   ctx.font = `18px ${FONT}`;

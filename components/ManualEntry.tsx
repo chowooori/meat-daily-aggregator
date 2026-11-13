@@ -75,6 +75,9 @@ export function ManualEntry({
   const [qty, setQty] = useState("1");
   const [memo, setMemo] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
+  // 평소에는 접어 두고 제목 줄에 줄 수·저장 상태만 보여 줍니다. 고치던 내용이 있으면 펼친 채로 둡니다.
+  const [open, setOpen] = useState(false);
+  const expanded = open || dirty || Boolean(blockReason);
 
   const qtyNumber = Number(qty);
   const qtyValid = Number.isInteger(qtyNumber) && qtyNumber > 0;
@@ -104,139 +107,149 @@ export function ManualEntry({
   };
 
   return (
-    <section className="card" aria-labelledby={titleId}>
-      <div className="card-head" style={{ alignItems: "baseline" }}>
-        <div>
-          <h2 id={titleId}>{copy.title}</h2>
-          <p className="hint">{copy.hint}</p>
-        </div>
-        <span className="caption">{status}</span>
-      </div>
-
-      <form
-        className="manual-form"
-        onSubmit={(event) => {
-          event.preventDefault();
-          submit();
-        }}
+    <section className="card line-bundle" aria-labelledby={titleId}>
+      <button
+        type="button"
+        className="bundle-toggle"
+        aria-expanded={expanded}
+        onClick={() => setOpen(!expanded)}
       >
-        <label>
-          <span className="sr-only">품목</span>
-          <select
-            value={product}
-            onChange={(event) => {
-              setProduct(event.target.value);
-              setSize(sizesOf(event.target.value)[0] ?? "");
+        <span aria-hidden="true">{expanded ? "▾" : "▸"}</span>
+        <h2 id={titleId}>{copy.title}</h2>
+        <span className="caption">
+          {lines.length ? `${lines.length}줄` : "없음"} · {status}
+        </span>
+      </button>
+      {expanded && (
+        <>
+          <p className="hint" style={{ margin: "6px 0 12px" }}>{copy.hint}</p>
+
+          <form
+            className="manual-form"
+            onSubmit={(event) => {
+              event.preventDefault();
+              submit();
             }}
           >
-            {MANUAL_CATALOG.map((c) => (
-              <option key={c.product}>{c.product}</option>
-            ))}
-          </select>
-        </label>
-        <label>
-          <span className="sr-only">용량</span>
-          <select value={size} onChange={(event) => setSize(event.target.value)}>
-            {sizesOf(product).map((s) => (
-              <option key={s}>{s}</option>
-            ))}
-          </select>
-        </label>
-        <span aria-hidden="true">×</span>
-        <label>
-          <span className="sr-only">수량</span>
-          <input
-            type="number"
-            min={1}
-            step={1}
-            inputMode="numeric"
-            value={qty}
-            onChange={(event) => setQty(event.target.value)}
-            className="manual-qty"
-            aria-invalid={!qtyValid}
-          />
-        </label>
-        <label className="manual-memo">
-          <span className="sr-only">{copy.memoLabel}</span>
-          <input
-            value={memo}
-            placeholder={copy.memoPlaceholder}
-            list={suggestions.length ? suggestionListId : undefined}
-            autoComplete="off"
-            onChange={(event) => setMemo(event.target.value)}
-          />
-          {suggestions.length ? (
-            <datalist id={suggestionListId}>
-              {suggestions.map((name) => (
-                <option key={name} value={name} />
-              ))}
-            </datalist>
-          ) : null}
-        </label>
-        <button type="submit" className="primary-button" style={{ marginTop: 0 }} disabled={!qtyValid}>
-          {editingId ? "고치기" : "추가"}
-        </button>
-        {editingId && (
-          <button type="button" className="ghost-button" onClick={reset}>
-            취소
-          </button>
-        )}
-      </form>
-      <p className="hint" style={{ margin: "8px 0 12px" }}>
-        {copy.helpText}
-      </p>
-
-      {lines.length ? (
-        <ul className="upload-list" aria-label={copy.listLabel}>
-          {lines.map((l) => (
-            <li key={l.id} className={l.id === editingId ? "is-editing" : undefined}>
-              <button
-                type="button"
-                className="manual-line"
-                onClick={() => startEdit(l)}
-                aria-label={`${l.product} ${l.size} ${l.qty}개${l.memo ? `, ${l.memo}` : ""} 고치기`}
-              >
-                <strong>
-                  {l.product} {l.size}
-                </strong>{" "}
-                × {l.qty}
-                {l.memo ? <span className="caption"> · {l.memo}</span> : null}
-              </button>
-              <button
-                type="button"
-                className="link-button"
-                onClick={() => {
-                  onLines(lines.filter((x) => x.id !== l.id));
-                  if (editingId === l.id) reset();
+            <label>
+              <span className="sr-only">품목</span>
+              <select
+                value={product}
+                onChange={(event) => {
+                  setProduct(event.target.value);
+                  setSize(sizesOf(event.target.value)[0] ?? "");
                 }}
               >
-                지우기
+                {MANUAL_CATALOG.map((c) => (
+                  <option key={c.product}>{c.product}</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span className="sr-only">용량</span>
+              <select value={size} onChange={(event) => setSize(event.target.value)}>
+                {sizesOf(product).map((s) => (
+                  <option key={s}>{s}</option>
+                ))}
+              </select>
+            </label>
+            <span aria-hidden="true">×</span>
+            <label>
+              <span className="sr-only">수량</span>
+              <input
+                type="number"
+                min={1}
+                step={1}
+                inputMode="numeric"
+                value={qty}
+                onChange={(event) => setQty(event.target.value)}
+                className="manual-qty"
+                aria-invalid={!qtyValid}
+              />
+            </label>
+            <label className="manual-memo">
+              <span className="sr-only">{copy.memoLabel}</span>
+              <input
+                value={memo}
+                placeholder={copy.memoPlaceholder}
+                list={suggestions.length ? suggestionListId : undefined}
+                autoComplete="off"
+                onChange={(event) => setMemo(event.target.value)}
+              />
+              {suggestions.length ? (
+                <datalist id={suggestionListId}>
+                  {suggestions.map((name) => (
+                    <option key={name} value={name} />
+                  ))}
+                </datalist>
+              ) : null}
+            </label>
+            <button type="submit" className="primary-button" style={{ marginTop: 0 }} disabled={!qtyValid}>
+              {editingId ? "고치기" : "추가"}
+            </button>
+            {editingId && (
+              <button type="button" className="ghost-button" onClick={reset}>
+                취소
               </button>
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <p className="file-name">{copy.emptyText}</p>
-      )}
+            )}
+          </form>
+          <p className="hint" style={{ margin: "8px 0 12px" }}>
+            {copy.helpText}
+          </p>
 
-      {blockReason ? (
-        <p className="status-error" role="alert" style={{ margin: "12px 0 0" }}>
-          {blockReason}
-        </p>
-      ) : null}
-      <div className="actions" style={{ marginTop: 12, alignItems: "center" }}>
-        <button
-          type="button"
-          className="ghost-button"
-          onClick={onSave}
-          disabled={saving || !dirty || Boolean(blockReason)}
-        >
-          {saving ? "저장 중…" : dirty ? copy.saveLabel : "저장됨"}
-        </button>
-        <span className="caption" aria-live="polite">
-          {note}
-        </span>
-      </div>
+          {lines.length ? (
+            <ul className="upload-list" aria-label={copy.listLabel}>
+              {lines.map((l) => (
+                <li key={l.id} className={l.id === editingId ? "is-editing" : undefined}>
+                  <button
+                    type="button"
+                    className="manual-line"
+                    onClick={() => startEdit(l)}
+                    aria-label={`${l.product} ${l.size} ${l.qty}개${l.memo ? `, ${l.memo}` : ""} 고치기`}
+                  >
+                    <strong>
+                      {l.product} {l.size}
+                    </strong>{" "}
+                    × {l.qty}
+                    {l.memo ? <span className="caption"> · {l.memo}</span> : null}
+                  </button>
+                  <button
+                    type="button"
+                    className="link-button"
+                    onClick={() => {
+                      onLines(lines.filter((x) => x.id !== l.id));
+                      if (editingId === l.id) reset();
+                    }}
+                  >
+                    지우기
+                  </button>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="file-name">{copy.emptyText}</p>
+          )}
+
+          {blockReason ? (
+            <p className="status-error" role="alert" style={{ margin: "12px 0 0" }}>
+              {blockReason}
+            </p>
+          ) : null}
+          <div className="actions" style={{ marginTop: 12, alignItems: "center" }}>
+            <button
+              type="button"
+              className="ghost-button"
+              onClick={onSave}
+              disabled={saving || !dirty || Boolean(blockReason)}
+            >
+              {saving ? "저장 중…" : dirty ? copy.saveLabel : "저장됨"}
+            </button>
+            <span className="caption" aria-live="polite">
+              {note}
+            </span>
+          </div>
+        </>
+      )}
     </section>
   );
 }
